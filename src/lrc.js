@@ -106,7 +106,71 @@
     return ans;
   }
 
-  const api = { parseLRC, plainToLines, estimateTimings, lineIndexAt };
+  // ---- Timing correction ----
+  // A correction is a list of sync points [{ at, offset }] sorted by `at`
+  // (playback seconds). One point shifts the whole song. With two or more,
+  // the offset is blended linearly between them, which stretches or squeezes
+  // the lyrics to fit (e.g. lyrics timed for a faster or longer version), and
+  // past the last point the same drift keeps going.
+
+  const MERGE_WINDOW = 15; // a press this close to a point fine-tunes it
+  const SHIFT_WINDOW = 40; // a first press this close to the first line shifts everything
+  const MAX_DRIFT = 0.25; // cap on extrapolated drift past the last point (s per s)
+
+  const round1 = (v) => Math.round(v * 10) / 10;
+
+  function offsetAt(points, t) {
+    const n = points.length;
+    if (!n) return 0;
+    if (n === 1 || t <= points[0].at) return points[0].offset;
+    for (let i = 1; i < n; i++) {
+      if (t <= points[i].at) return lerp(points[i - 1], points[i], t);
+    }
+    const p = points[n - 2];
+    const q = points[n - 1];
+    const drift = clamp((q.offset - p.offset) / (q.at - p.at), -MAX_DRIFT, MAX_DRIFT);
+    return q.offset + drift * (t - q.at);
+  }
+
+  function lerp(p, q, t) {
+    return p.offset + ((q.offset - p.offset) * (t - p.at)) / (q.at - p.at);
+  }
+
+  // Playback time at which lyric time `lyricT` comes up, i.e. solves
+  // t + offsetAt(t) = lyricT (fixed-point iteration; offsets change slowly).
+  function playbackTimeFor(points, lyricT) {
+    let t = lyricT - offsetAt(points, lyricT);
+    for (let i = 0; i < 8; i++) t = lyricT - offsetAt(points, t);
+    return Math.max(0, t);
+  }
+
+  // Applies a −/+ press of `delta` seconds at playback time `now`.
+  // `firstLineT` is when the first lyric line starts: if the first press comes
+  // well after it, the start is pinned at 0 so the fix stretches the lyrics
+  // instead of shifting lines that were already right.
+  function nudgePoints(points, now, delta, firstLineT) {
+    const next = points.map((p) => ({ ...p }));
+    let near = null;
+    for (const p of next) {
+      if (Math.abs(p.at - now) <= MERGE_WINDOW && (!near || Math.abs(p.at - now) < Math.abs(near.at - now))) near = p;
+    }
+    if (near) {
+      near.offset = round1(near.offset + delta);
+    } else {
+      const value = round1(offsetAt(points, now) + delta);
+      if (!next.length && firstLineT != null && now - firstLineT > SHIFT_WINDOW) {
+        next.push({ at: round1(firstLineT), offset: 0 });
+      }
+      next.push({ at: round1(now), offset: value });
+      next.sort((a, b) => a.at - b.at);
+    }
+    return next.every((p) => p.offset === 0) ? [] : next;
+  }
+
+  const api = {
+    parseLRC, plainToLines, estimateTimings, lineIndexAt,
+    offsetAt, playbackTimeFor, nudgePoints,
+  };
   root.Lyricly = Object.assign(root.Lyricly || {}, api);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

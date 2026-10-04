@@ -35,3 +35,46 @@ test('lineIndexAt', () => {
   assert.equal(lineIndexAt(lines, 7), 1);
   assert.equal(lineIndexAt(lines, 100), 2);
 });
+
+const { offsetAt, playbackTimeFor, nudgePoints } = require('../src/lrc.js');
+
+test('early presses shift the whole song', () => {
+  // First line at 12s; song is 2s late, noticed at 0:30.
+  let p = nudgePoints([], 30, 0.5, 12);
+  for (let i = 0; i < 3; i++) p = nudgePoints(p, 32 + i, 0.5, 12);
+  assert.deepEqual(p, [{ at: 30, offset: 2 }]);
+  assert.equal(offsetAt(p, 0), 2);
+  assert.equal(offsetAt(p, 200), 2);
+});
+
+test('a late first press stretches from the start instead of shifting it', () => {
+  // Lyrics fine at the start, 17s off by 3:00.
+  const p = nudgePoints([], 180, -17, 12);
+  assert.deepEqual(p, [{ at: 12, offset: 0 }, { at: 180, offset: -17 }]);
+  assert.equal(offsetAt(p, 12), 0);
+  assert.equal(offsetAt(p, 96), -8.5); // halfway: half the correction
+  assert.equal(offsetAt(p, 180), -17);
+  // Past the last point the drift continues, capped at MAX_DRIFT.
+  assert.ok(offsetAt(p, 200) < -17 && offsetAt(p, 200) >= -17 - 0.25 * 20);
+});
+
+test('presses near an existing point fine-tune it; adding points keeps them sorted', () => {
+  let p = [{ at: 12, offset: 0 }, { at: 180, offset: -17 }];
+  p = nudgePoints(p, 185, 0.5, 12);
+  assert.deepEqual(p, [{ at: 12, offset: 0 }, { at: 180, offset: -16.5 }]);
+  p = nudgePoints(p, 100, -0.5, 12);
+  assert.deepEqual(p.map((x) => x.at), [12, 100, 180]);
+});
+
+test('back to zero clears the correction', () => {
+  const p = nudgePoints([{ at: 30, offset: 0.5 }], 31, -0.5, 12);
+  assert.deepEqual(p, []);
+});
+
+test('playbackTimeFor inverts the correction (for click-to-seek)', () => {
+  const p = [{ at: 12, offset: 0 }, { at: 180, offset: -17 }];
+  for (const lyricT of [20, 90, 150]) {
+    const t = playbackTimeFor(p, lyricT);
+    assert.ok(Math.abs(t + offsetAt(p, t) - lyricT) < 0.01);
+  }
+});

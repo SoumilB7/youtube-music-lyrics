@@ -6,7 +6,7 @@
   const {
     readTrack, getVideo, isPlayerPageOpen, cleanTitle, fetchYTMLyrics,
     sideTabs, lyricsTab, isTabSelected, unlockLyricsTab, selectLyricsTab, sideContentRect,
-    parseLRC, plainToLines, estimateTimings, lineIndexAt,
+    parseLRC, plainToLines, estimateTimings, lineIndexAt, offsetAt, playbackTimeFor, nudgePoints,
     transliterateLine, hasDevanagari,
   } = globalThis.Lyricly;
 
@@ -18,12 +18,18 @@
   const ICON_CLOSE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
   const ICON_EXPAND = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg>';
   const ICON_APPROX = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+  const ICON_SAVE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M6 3.5h12v17l-6-4.2-6 4.2z"/></svg>';
+  const ICON_SAVED = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M6 3.5h12v17l-6-4.2-6 4.2z"/></svg>';
+  const ICON_RESET = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/></svg>';
   const ICON_SHRINK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M10 14l-7 7M14 10l7-7"/></svg>';
 
   let settings = { ...DEFAULTS };
   let track = null;
   let lyrics = null; // { lines: [{t, text, roman}], synced, source, note }
-  let offset = 0; // per-track sync nudge, seconds (+ = lyrics earlier)
+  // Timing correction for the current song: sync points [{ at, offset }]
+  // (see nudgePoints in lrc.js). Offset + = lyrics earlier.
+  let points = [];
+  let savedPoints = null; // what's saved for this song, if anything
   let loadToken = 0;
   let needsLoad = false;
   let activeIndex = -1;
@@ -69,6 +75,8 @@
             <button data-act="later" title="Lyrics are early: delay them 0.5s">−</button>
             <span class="offset">0.0s</span>
             <button data-act="earlier" title="Lyrics are late: show them 0.5s sooner">+</button>
+            <button data-act="reset" class="reset" title="Reset timing for this song" hidden>${ICON_RESET}</button>
+            <button data-act="save" class="save" disabled>${ICON_SAVE}</button>
           </div>
           <button data-act="layout" class="icon" title="Full screen"></button>
           <button data-act="close" class="icon" title="Hide (Alt+L)">${ICON_CLOSE}</button>
@@ -88,6 +96,8 @@
   const offsetEl = $('.offset');
   const retryBtn = $('[data-act="retry"]');
   const approxEl = $('.approx');
+  const saveBtn = $('[data-act="save"]');
+  const resetBtn = $('[data-act="reset"]');
 
   fab.addEventListener('click', () => setVisible(true));
 
@@ -102,6 +112,8 @@
       case 'smaller': return saveSettings({ fontSize: Math.max(16, settings.fontSize - 2) });
       case 'bigger': return saveSettings({ fontSize: Math.min(64, settings.fontSize + 2) });
       case 'earlier': return nudge(+0.5);
+      case 'save': return toggleSavedTiming();
+      case 'reset': return setPoints([]);
       case 'later': return nudge(-0.5);
       case 'layout': return saveSettings({ layout: settings.layout === 'full' ? 'panel' : 'full' });
       case 'close': return setVisible(false);
@@ -269,9 +281,104 @@
   addEventListener('resize', fitPanel);
 
   function nudge(delta) {
-    offset = Math.round((offset + delta) * 10) / 10;
-    offsetEl.textContent = `${offset > 0 ? '+' : ''}${offset.toFixed(1)}s`;
+    const v = getVideo();
+    const first = lyrics?.lines.find((l) => l.text);
+    setPoints(nudgePoints(points, v ? v.currentTime : 0, delta, first ? first.t : null));
+  }
+
+  function setPoints(next) {
+    points = next;
+    updateTimingUI();
     tick(true);
+  }
+
+  // ---- Per-song saved timing ----
+  // Stored in chrome.storage.sync under the YouTube video id, so a fix for a
+  // favourite song follows you and is applied automatically next time.
+
+  const fmtOffset = (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}s`;
+  const timingKey = (t) => `offset:${t.videoId || t.key}`;
+  const samePoints = (a, b) => !!b && JSON.stringify(a) === JSON.stringify(b);
+
+  function parseSaved(v) {
+    if (Array.isArray(v?.points)) {
+      return v.points
+        .filter((p) => Number.isFinite(p?.at) && Number.isFinite(p?.offset))
+        .map(({ at, offset }) => ({ at, offset }));
+    }
+    if (typeof v?.offset === 'number') return [{ at: 0, offset: v.offset }]; // older single-offset saves
+    return null;
+  }
+
+  async function restoreSavedTiming(t) {
+    try {
+      const key = timingKey(t);
+      const v = (await chrome.storage.sync.get(key))[key];
+      if (track?.key !== t.key) return;
+      savedPoints = parseSaved(v);
+      if (savedPoints) points = savedPoints.map((p) => ({ ...p }));
+    } catch (err) {
+      console.warn('[Lyricly] could not read saved timing', err);
+    }
+    updateTimingUI();
+  }
+
+  async function toggleSavedTiming() {
+    if (!track) return;
+    const key = timingKey(track);
+    try {
+      if (!points.length || samePoints(points, savedPoints)) {
+        await chrome.storage.sync.remove(key);
+        savedPoints = null;
+      } else {
+        const copy = points.map((p) => ({ ...p }));
+        await chrome.storage.sync.set({
+          [key]: { points: copy, title: track.title, artist: track.artists, savedAt: Date.now() },
+        });
+        savedPoints = copy;
+      }
+    } catch (err) {
+      console.warn('[Lyricly] could not save timing', err);
+    }
+    updateTimingUI();
+  }
+
+  function describePoints(p) {
+    return p.length > 1 ? `stretched across ${p.length} sync points` : fmtOffset(p[0].offset);
+  }
+
+  // The offset label follows playback (it changes along a stretch).
+  let shownOffset = '';
+  function updateOffsetLabel() {
+    const v = getVideo();
+    const text = fmtOffset(offsetAt(points, v ? v.currentTime : 0));
+    if (text !== shownOffset) offsetEl.textContent = shownOffset = text;
+  }
+
+  function updateTimingUI() {
+    updateOffsetLabel();
+    const stretched = points.length > 1;
+    offsetEl.classList.toggle('stretched', stretched);
+    offsetEl.title = stretched
+      ? `Timing is stretched across ${points.length} sync points, so lyrics speed up or slow down to fit. This is the correction right now.`
+      : '';
+    resetBtn.hidden = !points.length;
+
+    const saved = samePoints(points, savedPoints);
+    const dirty = !samePoints(points, savedPoints ?? []);
+    saveBtn.disabled = !saved && !dirty;
+    saveBtn.classList.toggle('saved', saved);
+    saveBtn.classList.toggle('dirty', dirty);
+    saveBtn.innerHTML = saved ? ICON_SAVED : ICON_SAVE;
+    saveBtn.title = saved
+      ? `Timing (${describePoints(points)}) is saved for this song. Click to forget it.`
+      : dirty && !points.length
+        ? 'Remove the saved timing for this song'
+        : dirty && savedPoints
+          ? 'Update the saved timing for this song'
+          : dirty
+            ? 'Save this timing for this song'
+            : 'Adjust timing with − / +, then save it for this song';
   }
 
   function showStatus(text) {
@@ -337,7 +444,9 @@
     if (!lyrics?.lines.length) return;
     const v = getVideo();
     if (!v) return;
-    const idx = lineIndexAt(lyrics.lines, v.currentTime + offset + LEAD);
+    const now = v.currentTime;
+    if (points.length > 1) updateOffsetLabel();
+    const idx = lineIndexAt(lyrics.lines, now + offsetAt(points, now) + LEAD);
     if (idx === activeIndex && !force) return;
     activeIndex = idx;
     const children = linesEl.children;
@@ -358,7 +467,7 @@
   function seekTo(line) {
     const v = getVideo();
     if (!v || !line) return;
-    v.currentTime = Math.max(0, line.t - offset - LEAD + 0.05);
+    v.currentTime = playbackTimeFor(points, line.t - LEAD + 0.05);
     userScrollUntil = 0;
   }
 
@@ -370,8 +479,9 @@
     if (t.key !== track?.key) {
       track = t;
       lyrics = null;
-      offset = 0;
-      offsetEl.textContent = '0.0s';
+      points = [];
+      savedPoints = null;
+      updateTimingUI();
       selectAttempts = 0;
       updateMeta();
       if (isShown()) load();
@@ -396,6 +506,8 @@
     const t = readTrack() || track;
     if (!t || t.key !== track?.key) return;
     track = t;
+    await restoreSavedTiming(t);
+    if (my !== loadToken) return;
 
     let built = null;
     try {
@@ -547,6 +659,10 @@ header {
 .seg, .sync { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: rgba(255,255,255,.05); align-items: center; }
 .seg button, .sync button { height: 26px; background: transparent; }
 .seg button.on { background: #fff; color: #000; }
+.sync button.save:disabled { opacity: .35; cursor: default; }
+.sync button.save.dirty { background: rgba(255,59,92,.22); }
+.sync button.save.saved { color: #ff3b5c; }
+.sync .offset.stretched { color: #ffb547; cursor: help; }
 .sync .offset { min-width: 42px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; color: rgba(255,255,255,.75); }
 
 .scroller {
