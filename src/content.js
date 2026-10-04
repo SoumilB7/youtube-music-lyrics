@@ -355,7 +355,33 @@
     if (text !== shownOffset) offsetEl.textContent = shownOffset = text;
   }
 
+  // A faint dot beside each line where you made a timing fix.
+  const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+  function markFixes() {
+    const fixes = new Map();
+    if (lyrics) {
+      for (const p of points) {
+        if (p.offset === 0) continue; // the automatic start pin isn't a fix you made
+        let i = lineIndexAt(lyrics.lines, p.at + offsetAt(points, p.at) + LEAD);
+        // A fix made before the first lyric (e.g. during a video's intro) or in
+        // a ♪ break belongs to the line that's sung next.
+        if (i < 0 || !lyrics.lines[i].text) {
+          const next = lyrics.lines.findIndex((l, k) => k > i && l.text);
+          if (next >= 0) i = next;
+        }
+        if (i >= 0) fixes.set(i, p);
+      }
+    }
+    for (const el of linesEl.children) {
+      const p = fixes.get(Number(el.dataset.i));
+      el.classList.toggle('fix', !!p);
+      if (p) el.title = `Timing fix at ${fmtTime(p.at)}: ${fmtOffset(p.offset)}`;
+      else el.removeAttribute('title');
+    }
+  }
+
   function updateTimingUI() {
+    markFixes();
     updateOffsetLabel();
     const stretched = points.length > 1;
     offsetEl.classList.toggle('stretched', stretched);
@@ -424,6 +450,7 @@
     });
     linesEl.append(frag);
     activeIndex = -1;
+    markFixes();
     tick(true);
   }
 
@@ -683,6 +710,11 @@ header {
   overflow-wrap: anywhere;
 }
 .panel.full .line { font-size: calc(var(--fs) * 1.6); }
+.line { position: relative; }
+.line.fix::before {
+  content: ""; position: absolute; left: -13px; top: .14em;
+  width: 4px; height: 1em; border-radius: 2px; background: #ffb547; opacity: .5;
+}
 .line:hover { color: rgba(255,255,255,.6); }
 .line.past { color: rgba(255,255,255,.22); }
 .line.active { color: #fff; transform: scale(1.03); text-shadow: 0 0 24px rgba(255,255,255,.18); }
