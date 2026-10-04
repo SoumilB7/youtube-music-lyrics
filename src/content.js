@@ -16,6 +16,7 @@
   const ICON_LYRICS = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h11M4 11h8M4 16h6"/><path d="M19 4v10.5"/><circle cx="16.5" cy="16.5" r="2.5"/></svg>';
   const ICON_CLOSE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
   const ICON_EXPAND = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg>';
+  const ICON_APPROX = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
   const ICON_SHRINK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M10 14l-7 7M14 10l7-7"/></svg>';
 
   let settings = { ...DEFAULTS };
@@ -42,7 +43,10 @@
     <section class="panel" hidden>
       <div class="bg"></div>
       <header>
-        <div class="meta"><div class="t"></div><div class="a"></div></div>
+        <div class="meta">
+          <div class="row"><div class="t"></div><span class="approx" role="img" hidden>${ICON_APPROX}</span></div>
+          <div class="a"></div>
+        </div>
         <div class="controls">
           <div class="seg" role="group" aria-label="Script">
             <button data-mode="roman" title="Romanised (Hinglish)">Aa</button>
@@ -73,6 +77,7 @@
   const sourceEl = $('.source');
   const offsetEl = $('.offset');
   const retryBtn = $('[data-act="retry"]');
+  const approxEl = $('.approx');
 
   fab.addEventListener('click', () => setVisible(true));
 
@@ -311,6 +316,7 @@
     needsLoad = false;
     sourceEl.textContent = '';
     retryBtn.hidden = true;
+    setApprox('');
     showStatus('Finding lyrics…');
 
     // The duration in the player bar lags the title by a moment on track change.
@@ -329,7 +335,10 @@
       if (my !== loadToken) return;
       if (res?.found && res.synced) {
         built = { lines: parseLRC(res.syncedLyrics), synced: true, source: 'LRCLIB' };
-        if (res.durationDiff > 8) built.note = 'different version? use −/+ to adjust';
+        if (res.durationDiff > 8) {
+          const longer = res.match.duration > t.duration;
+          built.approx = `These lyrics are timed for a version ${Math.round(res.durationDiff)}s ${longer ? 'longer' : 'shorter'} than this one, so lines may drift. Use − / + to line them up.`;
+        }
       } else if (res?.found) {
         built = { lines: estimateTimings(plainToLines(res.plainLyrics), t.duration), synced: false, source: 'LRCLIB' };
       }
@@ -368,13 +377,22 @@
       if (ln.roman) romanised = true;
     }
     lyrics = built;
+    setApprox(built.synced
+      ? built.approx || ''
+      : 'Approximate timing: these lyrics have no timestamps, so lines are spread across the song. Use − / + to line them up.');
     sourceEl.textContent = [
       built.source,
       built.synced ? 'synced' : 'timing estimated',
       romanised && 'auto-romanised',
-      built.note,
     ].filter(Boolean).join(' · ');
     renderLines();
+  }
+
+  // Clock badge beside the title when the timing can't be trusted exactly.
+  function setApprox(reason) {
+    approxEl.hidden = !reason;
+    approxEl.title = reason;
+    approxEl.setAttribute('aria-label', reason);
   }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -434,7 +452,12 @@ header {
   padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08);
 }
 .meta { flex: 1 1 140px; min-width: 0; }
+.meta .row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .meta .t, .meta .a { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.approx {
+  flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px;
+  border-radius: 50%; color: #ffb547; background: rgba(255,181,71,.16); cursor: help;
+}
 .meta .t { font-size: 14px; font-weight: 650; }
 .meta .a { font-size: 12px; color: rgba(255,255,255,.6); margin-top: 2px; }
 .panel.full header { padding: 14px max(16px, 4vw); }
