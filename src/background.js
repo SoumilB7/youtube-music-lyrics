@@ -16,11 +16,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return false;
 });
 
-// Clicking the toolbar icon toggles the panel on the active YT Music tab.
-chrome.action.onClicked.addListener((tab) => {
-  if (tab.id != null) chrome.tabs.sendMessage(tab.id, { type: 'lyricly:toggle' }).catch(() => {});
-});
-
 async function findLyrics(track) {
   const { title, artist, duration } = track;
   const key = `lrc2:${norm(title)}|${norm(artist)}|${Math.round(duration || 0)}`;

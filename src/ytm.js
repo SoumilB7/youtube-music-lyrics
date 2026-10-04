@@ -63,13 +63,52 @@
     return r.height > 0 && r.top < innerHeight / 2 && getComputedStyle(page).visibility !== 'hidden';
   }
 
-  // Bounding box of the player page's right-hand column (Up next / Lyrics /
-  // Related tabs), or null if it isn't rendered.
-  function sidePanelRect() {
-    const el = document.querySelector('ytmusic-player-page #side-panel, ytmusic-player-page .side-panel');
+  // ---- Player page side panel (Up next / Lyrics / Comments / Related) ----
+
+  function sidePanel() {
+    return document.querySelector('ytmusic-player-page #side-panel, ytmusic-player-page .side-panel');
+  }
+
+  function sideTabs() {
+    return [...document.querySelectorAll('ytmusic-player-page tp-yt-paper-tab')];
+  }
+
+  // The Lyrics tab, by label, falling back to position (it's second).
+  function lyricsTab() {
+    const tabs = sideTabs();
+    return tabs.find((t) => /^\s*lyrics\s*$/i.test(t.textContent)) || tabs[1] || null;
+  }
+
+  function isTabSelected(tab) {
+    return !!tab && (tab.classList.contains('iron-selected') || tab.getAttribute('aria-selected') === 'true');
+  }
+
+  // YT greys the Lyrics tab out for songs it has no lyrics for; Lyricly can
+  // still show LRCLIB lyrics there, so keep it clickable.
+  function unlockLyricsTab() {
+    const tab = lyricsTab();
+    if (tab && (tab.hasAttribute('disabled') || tab.getAttribute('aria-disabled') === 'true')) {
+      tab.removeAttribute('disabled');
+      tab.setAttribute('aria-disabled', 'false');
+    }
+    return tab;
+  }
+
+  function selectLyricsTab() {
+    const tab = unlockLyricsTab();
+    if (tab && !isTabSelected(tab)) tab.click();
+  }
+
+  // Area under the tab row, where tab content (and Lyricly) goes; or null.
+  function sideContentRect() {
+    const el = sidePanel();
     if (!el) return null;
     const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 ? r : null;
+    if (!(r.width > 0 && r.height > 0)) return null;
+    const tabs = sideTabs();
+    const tabsBottom = tabs.length ? Math.max(...tabs.map((t) => t.getBoundingClientRect().bottom)) : r.top;
+    const top = Math.max(r.top, tabsBottom);
+    return { top, left: r.left, width: r.width, bottom: r.bottom };
   }
 
   // Strips the noise YouTube titles carry so search engines can match:
@@ -162,6 +201,9 @@
     };
   }
 
-  const api = { getVideo, readTrack, isPlayerPageOpen, sidePanelRect, cleanTitle, fetchYTMLyrics };
+  const api = {
+    getVideo, readTrack, isPlayerPageOpen, sideTabs, lyricsTab, isTabSelected, unlockLyricsTab, selectLyricsTab, sideContentRect,
+    cleanTitle, fetchYTMLyrics,
+  };
   root.Lyricly = Object.assign(root.Lyricly || {}, api);
 })(globalThis);

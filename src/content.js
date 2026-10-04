@@ -4,14 +4,15 @@
   'use strict';
 
   const {
-    readTrack, getVideo, isPlayerPageOpen, sidePanelRect, cleanTitle, fetchYTMLyrics,
+    readTrack, getVideo, isPlayerPageOpen, cleanTitle, fetchYTMLyrics,
+    sideTabs, lyricsTab, isTabSelected, unlockLyricsTab, selectLyricsTab, sideContentRect,
     parseLRC, plainToLines, estimateTimings, lineIndexAt,
     transliterateLine, hasDevanagari,
   } = globalThis.Lyricly;
 
   // Show a line slightly before it's sung so you can read along.
   const LEAD = 0.3;
-  const DEFAULTS = { visible: true, mode: 'roman', fontSize: 28, layout: 'panel' };
+  const DEFAULTS = { visible: true, mode: 'roman', fontSize: 28, layout: 'panel', autoOpenLyrics: true };
 
   const ICON_LYRICS = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h11M4 11h8M4 16h6"/><path d="M19 4v10.5"/><circle cx="16.5" cy="16.5" r="2.5"/></svg>';
   const ICON_CLOSE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
@@ -28,9 +29,18 @@
   let activeIndex = -1;
   let userScrollUntil = 0;
   let raf = 0;
-  let pageOpen = false; // only show on the song's player page
+  let pageOpen = false; // the song's player page is expanded
+  let onLyricsTab = false; // ...and its Lyrics tab is showing
 
-  const isShown = () => settings.visible && pageOpen;
+  // Lyricly lives in the player page's Lyrics tab. `wantLyrics` is whether
+  // that tab should be showing: set by auto-open or by clicking the tab, and
+  // cleared when you pick another tab. It lets us put the tab back if YT
+  // switches away on its own (e.g. a new song YT has no lyrics for).
+  let wantLyrics = false;
+  let selectAttempts = 0;
+  let lastAttempt = 0;
+
+  const isShown = () => settings.visible && pageOpen && onLyricsTab;
 
   // ---------------------------------------------------------------- UI ----
 
@@ -124,19 +134,47 @@
     if (e.altKey && e.code === 'KeyL' && pageOpen) {
       e.preventDefault();
       e.stopPropagation();
-      setVisible(!settings.visible);
+      if (onLyricsTab) {
+        setVisible(!settings.visible);
+      } else {
+        // From another tab, Alt+L jumps to the lyrics.
+        wantLyrics = true;
+        selectAttempts = 0;
+        setVisible(true);
+      }
     } else if (e.key === 'Escape' && isShown() && settings.layout === 'full') {
       saveSettings({ layout: 'panel' });
     }
   }, true);
 
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.type === 'lyricly:toggle' && pageOpen) setVisible(!settings.visible);
+  // Settings changed from the toolbar popup (or another tab).
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync') return;
+    let changed = false;
+    for (const [k, { newValue }] of Object.entries(changes)) {
+      if (k in DEFAULTS && newValue !== undefined && settings[k] !== newValue) {
+        settings[k] = newValue;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    applySettings();
+    renderLines();
+    onShownChange();
   });
+
+  // Remember which side-panel tab the user picks themselves.
+  document.addEventListener('click', (e) => {
+    if (!e.isTrusted) return;
+    const tab = e.composedPath().find((el) => el.tagName === 'TP-YT-PAPER-TAB');
+    if (!tab || !sideTabs().includes(tab)) return;
+    wantLyrics = tab === lyricsTab();
+    selectAttempts = 0;
+  }, true);
 
   function applySettings() {
     panel.hidden = !isShown();
-    fab.hidden = settings.visible || !pageOpen;
+    fab.hidden = settings.visible || !pageOpen || !onLyricsTab;
     panel.classList.toggle('full', settings.layout === 'full');
     fitPanel();
     panel.style.setProperty('--fs', `${settings.fontSize}px`);
@@ -169,32 +207,64 @@
     const open = isPlayerPageOpen();
     if (open !== pageOpen) {
       pageOpen = open;
+      wantLyrics = open && settings.autoOpenLyrics;
+      selectAttempts = 0;
+    }
+
+    let lyricsActive = false;
+    if (pageOpen) {
+      const tab = unlockLyricsTab();
+      if (!tab) {
+        // Can't find YT's tabs at all: fall back to covering the side panel.
+        lyricsActive = true;
+      } else if (isTabSelected(tab)) {
+        lyricsActive = true;
+        wantLyrics = true;
+        selectAttempts = 0;
+      } else if (wantLyrics) {
+        if (selectAttempts < 3 && Date.now() - lastAttempt > 1200) {
+          selectAttempts++;
+          lastAttempt = Date.now();
+          selectLyricsTab();
+        }
+        // If YT won't select the tab (no lyrics of its own), show anyway.
+        lyricsActive = selectAttempts >= 3 && Date.now() - lastAttempt > 1200;
+      }
+    }
+
+    if (lyricsActive !== onLyricsTab) {
+      onLyricsTab = lyricsActive;
       applySettings();
       onShownChange();
     }
     fitPanel();
   }
 
-  // In panel layout, sit exactly over the player page's right-hand column
-  // (Up next / Lyrics / Related) so it lines up at any window size or aspect
-  // ratio. Falls back to the stylesheet's fixed sizing if it can't be found.
+  // In panel layout, fill the side panel's content area under the tab row
+  // (so Up next / Comments / Related stay clickable), at any window size.
+  // Falls back to the stylesheet's fixed sizing if it can't be found.
   let fitted = '';
   function fitPanel() {
     let box = '';
-    const r = isShown() && settings.layout !== 'full' ? sidePanelRect() : null;
+    const r = (isShown() || !fab.hidden) && settings.layout !== 'full' ? sideContentRect() : null;
     if (r) {
       const top = Math.max(r.top, 64);
       const bottom = Math.min(r.bottom, innerHeight - 76);
-      if (r.width >= 280 && bottom - top >= 240) {
+      if (r.width >= 280 && bottom - top >= 200) {
         box = `${Math.round(top)},${Math.round(r.left)},${Math.round(r.width)},${Math.round(bottom - top)}`;
       }
     }
     if (box === fitted) return;
     fitted = box;
-    const [top, left, width, height] = box ? box.split(',') : [];
+    const [top, left, width, height] = box ? box.split(',').map(Number) : [];
+    panel.classList.toggle('docked', !!box);
     Object.assign(panel.style, box
       ? { top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px`, right: 'auto', bottom: 'auto' }
       : { top: '', left: '', width: '', height: '', right: '', bottom: '' });
+    // The "show lyrics" button sits in the corner of the same area.
+    Object.assign(fab.style, box
+      ? { top: `${top + height - 62}px`, left: `${left + width - 62}px`, right: 'auto', bottom: 'auto' }
+      : { top: '', left: '', right: '', bottom: '' });
   }
   addEventListener('resize', fitPanel);
 
@@ -302,6 +372,7 @@
       lyrics = null;
       offset = 0;
       offsetEl.textContent = '0.0s';
+      selectAttempts = 0;
       updateMeta();
       if (isShown()) load();
       else needsLoad = true;
@@ -437,6 +508,7 @@ button { font: inherit; color: inherit; }
   background: #0e0e0e; border: 1px solid rgba(255,255,255,.08); overscroll-behavior: contain;
   box-shadow: 0 24px 64px rgba(0,0,0,.55);
 }
+.panel.docked:not(.full) { border-radius: 0 0 12px 12px; border-top: 0; box-shadow: none; }
 .panel.full { top: 0; left: 0; right: 0; bottom: 72px; width: auto; border-radius: 0; border: 0; background: #060606; }
 @media (max-width: 720px) { .panel:not(.full) { left: 8px; right: 8px; width: auto; } }
 

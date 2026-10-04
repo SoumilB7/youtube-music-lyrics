@@ -6,7 +6,7 @@ A Chrome extension that shows large, time-synced lyrics on [YouTube Music](https
 
 1. Clone this repo.
 2. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and select the folder.
-3. Play a song on music.youtube.com and press <kbd>Alt</kbd>+<kbd>L</kbd>.
+3. Play a song on music.youtube.com and open the player. Lyrics appear in the **Lyrics** tab.
 
 ## Controls
 
@@ -15,6 +15,8 @@ A Chrome extension that shows large, time-synced lyrics on [YouTube Music](https
 - **− / +:** shift timing by 0.5 s
 - **⤢:** full screen (<kbd>Esc</kbd> to exit)
 - **Click a line:** seek to it
+- **<kbd>Alt</kbd>+<kbd>L</kbd>:** show or hide the lyrics
+- **Toolbar icon:** settings (auto-open Lyrics tab, show Lyricly lyrics)
 
 ## How it works
 
