@@ -30,6 +30,10 @@
     input[type="checkbox"]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
     p.hint { margin: 10px 0 0; color: rgba(255,255,255,.5); font-size: 12px; }
     a { color: #fff; }
+    .link-row { width: 100%; font: inherit; color: inherit; background: none; border: 0; border-top: 1px solid rgba(255,255,255,.08);
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; text-align: left; cursor: pointer; }
+    .link-row > span[aria-hidden] { font-size: 20px; color: rgba(255,255,255,.5); }
+    .link-row:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
     kbd { font: inherit; padding: 0 4px; border: 1px solid rgba(255,255,255,.25); border-radius: 4px; }
   </style>
 </head>
@@ -43,8 +47,13 @@
     <span class="text">Show Lyricly lyrics<small>Off shows YouTube Music's own lyrics instead.</small></span>
     <input type="checkbox" id="visible">
   </label>
+  <button type="button" class="row link-row" id="saved">
+    <span class="text">Saved timings<small id="saved-count">Back up or restore your timing fixes.</small></span>
+    <span aria-hidden="true">›</span>
+  </button>
   <p class="hint"><kbd>Alt</kbd>+<kbd>L</kbd> also shows or hides the lyrics.</p>
   <p class="hint">Lyrics from <a href="https://lrclib.net" target="_blank" rel="noopener">LRCLIB</a>, a free, open-source lyrics database.</p>
+  <script src="store.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

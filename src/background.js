@@ -10,6 +10,13 @@ const HIT_TTL = 30 * 24 * 3600 * 1000;
 const MISS_TTL = 12 * 3600 * 1000;
 const DEVANAGARI = /[ऀ-ॿ]/;
 
+// Saved settings and timing fixes are migrated to the current format on
+// install and on every update (see store.js).
+if (typeof importScripts === 'function') importScripts('store.js');
+chrome.runtime.onInstalled?.addListener(() => {
+  globalThis.Lyricly.store.migrate().catch((err) => console.warn('[Lyricly] migration failed', err));
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'lyricly:find') {
     findLyrics(msg.track).then(sendResponse, (err) => sendResponse({ found: false, error: String(err) }));

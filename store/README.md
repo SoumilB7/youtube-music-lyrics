@@ -15,8 +15,11 @@ Reviewers sometimes object to another company's trademark in an extension's name
 ## Updates
 
 1. Bump `version` in `manifest.json`. The store rejects a version it has already seen.
+   If the update changes how anything is saved, follow the rules at the top of `src/store.js` (bump `SCHEMA`, add a migration step and a test), so users keep their settings and saved timings.
 2. Run `./scripts/package.sh`.
 3. In the dashboard, open the item, go to **Package**, upload the new zip and submit.
+
+Before your first store upload, export a backup from **Saved timings** in your developer copy. The store version is a separate install with empty storage, so import the backup there.
 
 If an update adds a permission, also update the justifications in `privacy-practices.md` and in the dashboard. Chrome disables the extension for existing users until they accept the new permission.
 

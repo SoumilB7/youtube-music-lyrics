@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lyricly saved timings</title>
+  <style>
+    :root { color-scheme: dark; --bg: #0e0e10; --surface: #17171b; --fg: #f3f2f4; --muted: rgba(243,242,244,.58); --line: rgba(255,255,255,.09); --accent: #ff3b5c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding-inline: 16px; padding-block: 40px; }
+    main { max-width: 760px; margin: 0 auto; display: grid; gap: 20px; }
+    header { display: flex; align-items: center; gap: 12px; }
+    header img { width: 36px; height: 36px; }
+    h1 { margin: 0; font-size: 22px; }
+    p { margin: 0; color: var(--muted); max-width: 65ch; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    button, .file {
+      font: 600 13px system-ui, sans-serif; color: var(--fg); background: rgba(255,255,255,.08);
+      border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+    }
+    button:hover, .file:hover { background: rgba(255,255,255,.15); }
+    button.primary { background: var(--accent); color: #fff; }
+    button.primary:hover { background: #ff5572; }
+    button:focus-visible, .file:focus-within { outline: 2px solid #fff; outline-offset: 2px; }
+    .file input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    #status { color: var(--muted); min-height: 1.5em; }
+    #status.error { color: #ff8a8a; }
+    .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    tr:last-child td { border-bottom: 0; }
+    th { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    td.fix, td.date { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    td.date, td .artist { color: var(--muted); }
+    td button { padding: 5px 10px; font-size: 12px; }
+    .empty { padding: 28px 14px; text-align: center; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <header><img src="../icons/icon128.png" alt=""><h1>Saved timings</h1></header>
+    <p>Songs where you saved a timing fix with the bookmark. These are kept through every Lyricly update. To move them to another computer, or to a new install (say, from a developer copy to the Chrome Web Store version), export a backup here and import it there.</p>
+    <div class="actions">
+      <button type="button" class="primary" id="export">Export backup</button>
+      <label class="file">Import backup<input type="file" id="import" accept="application/json,.json"></label>
+      <span id="status" role="status"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Song</th><th>Fix</th><th>Saved</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+  <script src="store.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

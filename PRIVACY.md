@@ -17,10 +17,12 @@ Lyricly is a Chrome extension that shows synced lyrics on YouTube Music. It has 
 All of this is stored in your browser:
 
 - **Settings:** display mode, text size, layout, and the two switches in the settings popup.
-- **Saved timing fixes:** for songs where you saved a timing fix, the YouTube video ID, song title, artist and the fix itself.
+- **Saved timing fixes:** for songs where you saved a timing fix, the YouTube video ID, song title, artist, the fix itself and when you saved it. A backup copy is kept in local storage so a full sync quota can't lose a save.
 - **Lyrics cache:** lyrics already found, kept for up to 30 days so they aren't fetched again.
 
-Settings and saved timing fixes use Chrome's sync storage. If Chrome Sync is turned on, Chrome syncs them across your devices through your Google account. The lyrics cache stays on this device.
+Settings and saved timing fixes use Chrome's sync storage. If Chrome Sync is turned on, Chrome syncs them across your devices through your Google account. The lyrics cache and the backup copies stay on this device.
+
+**Backup files.** If you choose **Export backup** on the Saved timings page, Lyricly saves a file with your settings and saved fixes to your computer. The file goes nowhere else unless you move it yourself.
 
 ## What Lyricly doesn't do
 
@@ -28,7 +30,7 @@ Lyricly doesn't sell or share your data, doesn't track what you browse, and does
 
 ## Removing your data
 
-Uninstalling Lyricly deletes everything it stored. To clear saved timing fixes without uninstalling, press the bookmark on a song with a saved fix to forget it.
+Uninstalling Lyricly deletes everything it stored. To clear saved timing fixes without uninstalling, use **Forget** on the Saved timings page, or press the bookmark on a song with a saved fix.
 
 ## Contact
 

@@ -7,7 +7,7 @@
     readTrack, getVideo, isPlayerPageOpen, cleanTitle, fetchYTMLyrics,
     sideTabs, lyricsTab, isTabSelected, unlockLyricsTab, selectLyricsTab, sideContentRect,
     parseLRC, plainToLines, estimateTimings, lineIndexAt, offsetAt, playbackTimeFor, nudgePoints,
-    transliterateLine, hasDevanagari,
+    transliterateLine, hasDevanagari, store,
   } = globalThis.Lyricly;
 
   // Show a line slightly before it's sung so you can read along.
@@ -73,7 +73,8 @@
           <button data-act="bigger" title="Larger text">A+</button>
           <div class="sync" title="Nudge timing if lyrics run early/late">
             <button data-act="later" title="Lyrics are early: delay them 0.5s">−</button>
-            <span class="offset">0.0s</span>
+            <input class="offset" id="lyricly-offset" type="text" inputmode="decimal" value="0.0s"
+              aria-label="Timing correction in seconds" title="Click to type an exact value">
             <button data-act="earlier" title="Lyrics are late: show them 0.5s sooner">+</button>
             <button data-act="reset" class="reset" title="Reset timing for this song" hidden>${ICON_RESET}</button>
             <button data-act="save" class="save" disabled>${ICON_SAVE}</button>
@@ -141,7 +142,7 @@
   }).observe(scroller);
 
   document.addEventListener('keydown', (e) => {
-    const t = e.target;
+    const t = e.composedPath()[0];
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     if (e.altKey && e.code === 'KeyL' && pageOpen) {
       e.preventDefault();
@@ -293,29 +294,18 @@
   }
 
   // ---- Per-song saved timing ----
-  // Stored in chrome.storage.sync under the YouTube video id, so a fix for a
-  // favourite song follows you and is applied automatically next time.
+  // Saved under the YouTube video id (see store.js, which keeps saves safe
+  // across updates), so a fix for a favourite song is applied next time.
 
   const fmtOffset = (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}s`;
-  const timingKey = (t) => `offset:${t.videoId || t.key}`;
+  const timingKey = (t) => `${store.TIMING_PREFIX}${t.videoId || t.key}`;
   const samePoints = (a, b) => !!b && JSON.stringify(a) === JSON.stringify(b);
-
-  function parseSaved(v) {
-    if (Array.isArray(v?.points)) {
-      return v.points
-        .filter((p) => Number.isFinite(p?.at) && Number.isFinite(p?.offset))
-        .map(({ at, offset }) => ({ at, offset }));
-    }
-    if (typeof v?.offset === 'number') return [{ at: 0, offset: v.offset }]; // older single-offset saves
-    return null;
-  }
 
   async function restoreSavedTiming(t) {
     try {
-      const key = timingKey(t);
-      const v = (await chrome.storage.sync.get(key))[key];
+      const saved = await store.getTiming(timingKey(t));
       if (track?.key !== t.key) return;
-      savedPoints = parseSaved(v);
+      savedPoints = saved ? saved.points : null;
       if (savedPoints) points = savedPoints.map((p) => ({ ...p }));
     } catch (err) {
       console.warn('[Lyricly] could not read saved timing', err);
@@ -328,13 +318,11 @@
     const key = timingKey(track);
     try {
       if (!points.length || samePoints(points, savedPoints)) {
-        await chrome.storage.sync.remove(key);
+        await store.removeTiming(key);
         savedPoints = null;
       } else {
         const copy = points.map((p) => ({ ...p }));
-        await chrome.storage.sync.set({
-          [key]: { points: copy, title: track.title, artist: track.artists, savedAt: Date.now() },
-        });
+        await store.setTiming(key, { points: copy, title: track.title, artist: track.artists });
         savedPoints = copy;
       }
     } catch (err) {
@@ -349,10 +337,56 @@
 
   // The offset label follows playback (it changes along a stretch).
   let shownOffset = '';
-  function updateOffsetLabel() {
+  function updateOffsetLabel(force) {
+    if (shadow.activeElement === offsetEl) return; // don't overwrite while typing
     const v = getVideo();
     const text = fmtOffset(offsetAt(points, v ? v.currentTime : 0));
-    if (text !== shownOffset) offsetEl.textContent = shownOffset = text;
+    if (force || text !== shownOffset) offsetEl.value = shownOffset = text;
+  }
+
+  // Typing an exact value: "-8.3", "+2", "1,5s" and "−0.7" all work. It's
+  // applied like a −/+ press of the difference, so the shift/stretch rules
+  // stay the same.
+  function parseOffset(text) {
+    if (!String(text).trim()) return null;
+    const v = Number(String(text).trim().replace(/^\u2212/, '-').replace(',', '.').replace(/\s*s$/i, ''));
+    return Number.isFinite(v) ? Math.max(-600, Math.min(600, v)) : null;
+  }
+
+  let cancelEdit = false;
+  function applyTypedOffset() {
+    const value = cancelEdit ? null : parseOffset(offsetEl.value);
+    cancelEdit = false;
+    const v = getVideo();
+    const now = v ? v.currentTime : 0;
+    if (value !== null) {
+      const delta = Math.round((value - offsetAt(points, now)) * 10) / 10;
+      if (delta) {
+        const first = lyrics?.lines.find((l) => l.text);
+        points = nudgePoints(points, now, delta, first ? first.t : null);
+        tick(true);
+      }
+    }
+    updateTimingUI();
+    updateOffsetLabel(true);
+  }
+
+  offsetEl.addEventListener('focus', () => {
+    offsetEl.value = offsetEl.value.replace(/s$/, '');
+    offsetEl.select();
+  });
+  offsetEl.addEventListener('blur', applyTypedOffset);
+  offsetEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') offsetEl.blur();
+    if (e.key === 'Escape') {
+      cancelEdit = true;
+      offsetEl.blur();
+    }
+  });
+  // Keep YouTube Music's keyboard shortcuts (space, arrows, digits) from
+  // firing while typing a value.
+  for (const ev of ['keydown', 'keypress', 'keyup']) {
+    offsetEl.addEventListener(ev, (e) => e.stopPropagation());
   }
 
   // A faint dot beside each line where you made a timing fix.
@@ -700,8 +734,14 @@ header {
 .sync button.save:disabled { opacity: .35; cursor: default; }
 .sync button.save.dirty { background: rgba(255,59,92,.22); }
 .sync button.save.saved { color: #ff3b5c; }
-.sync .offset.stretched { color: #ffb547; cursor: help; }
-.sync .offset { min-width: 42px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; color: rgba(255,255,255,.75); }
+.sync .offset.stretched { color: #ffb547; }
+.sync .offset {
+  width: 52px; height: 24px; padding: 0 2px; border: 0; border-radius: 6px; background: transparent;
+  font: inherit; font-size: 12px; text-align: center; font-variant-numeric: tabular-nums;
+  color: rgba(255,255,255,.75); cursor: text;
+}
+.sync .offset:hover { background: rgba(255,255,255,.08); }
+.sync .offset:focus { outline: none; background: rgba(255,255,255,.14); color: #fff; }
 
 .scroller {
   --half: 40%;

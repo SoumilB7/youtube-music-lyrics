@@ -12,12 +12,12 @@ A Chrome extension that shows large, time-synced lyrics on [YouTube Music](https
 
 - **Aa / Both / अ:** romanised, both, or original script
 - **A− / A+:** text size
-- **− / +:** fix timing by 0.5 s at the current point in the song. Fixes at different points stretch the lyrics between them, so lyrics that drift line up throughout. **↺** resets the timing.
+- **− / +:** fix timing by 0.5 s at the current point in the song, or click the number to type an exact value. Fixes at different points stretch the lyrics between them, so lyrics that drift line up throughout. **↺** resets the timing.
 - **Bookmark:** saves the timing fix for this song and applies it automatically next time.
 - **⤢:** full screen (<kbd>Esc</kbd> to exit)
 - **Click a line:** seek to it
 - **<kbd>Alt</kbd>+<kbd>L</kbd>:** show or hide the lyrics
-- **Toolbar icon:** settings (auto-open Lyrics tab, show Lyricly lyrics)
+- **Toolbar icon:** settings (auto-open Lyrics tab, show Lyricly lyrics) and **Saved timings**, where you can back up, restore or forget saved fixes. Saves are kept through every update.
 
 ## How it works
 
