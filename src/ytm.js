@@ -47,6 +47,31 @@
     };
   }
 
+  // True when the full "now playing" page is expanded (not home/browse with
+  // just the bottom player bar). YT Music reflects this on the app layout;
+  // the geometry check is a fallback in case those attributes change.
+  function isPlayerPageOpen() {
+    const layout = document.querySelector('ytmusic-app-layout');
+    if (layout) {
+      if (layout.hasAttribute('player-page-open') || layout.hasAttribute('player-page-open_')) return true;
+      const state = layout.getAttribute('player-ui-state') || layout.getAttribute('player-ui-state_');
+      if (state) return /PLAYER_PAGE_OPEN|FULLSCREEN/.test(state);
+    }
+    const page = document.querySelector('ytmusic-player-page');
+    if (!page) return false;
+    const r = page.getBoundingClientRect();
+    return r.height > 0 && r.top < innerHeight / 2 && getComputedStyle(page).visibility !== 'hidden';
+  }
+
+  // Bounding box of the player page's right-hand column (Up next / Lyrics /
+  // Related tabs), or null if it isn't rendered.
+  function sidePanelRect() {
+    const el = document.querySelector('ytmusic-player-page #side-panel, ytmusic-player-page .side-panel');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 ? r : null;
+  }
+
   // Strips the noise YouTube titles carry so search engines can match:
   // "Kesariya (From \"Brahmastra\")", "Song | Movie | Actor", "(Official Video)".
   function cleanTitle(title) {
@@ -137,6 +162,6 @@
     };
   }
 
-  const api = { getVideo, readTrack, cleanTitle, fetchYTMLyrics };
+  const api = { getVideo, readTrack, isPlayerPageOpen, sidePanelRect, cleanTitle, fetchYTMLyrics };
   root.Lyricly = Object.assign(root.Lyricly || {}, api);
 })(globalThis);

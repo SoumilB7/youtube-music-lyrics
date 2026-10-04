@@ -4,7 +4,7 @@
   'use strict';
 
   const {
-    readTrack, getVideo, cleanTitle, fetchYTMLyrics,
+    readTrack, getVideo, isPlayerPageOpen, sidePanelRect, cleanTitle, fetchYTMLyrics,
     parseLRC, plainToLines, estimateTimings, lineIndexAt,
     transliterateLine, hasDevanagari,
   } = globalThis.Lyricly;
@@ -27,6 +27,9 @@
   let activeIndex = -1;
   let userScrollUntil = 0;
   let raf = 0;
+  let pageOpen = false; // only show on the song's player page
+
+  const isShown = () => settings.visible && pageOpen;
 
   // ---------------------------------------------------------------- UI ----
 
@@ -113,23 +116,24 @@
   document.addEventListener('keydown', (e) => {
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-    if (e.altKey && e.code === 'KeyL') {
+    if (e.altKey && e.code === 'KeyL' && pageOpen) {
       e.preventDefault();
       e.stopPropagation();
       setVisible(!settings.visible);
-    } else if (e.key === 'Escape' && settings.visible && settings.layout === 'full') {
+    } else if (e.key === 'Escape' && isShown() && settings.layout === 'full') {
       saveSettings({ layout: 'panel' });
     }
   }, true);
 
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.type === 'lyricly:toggle') setVisible(!settings.visible);
+    if (msg?.type === 'lyricly:toggle' && pageOpen) setVisible(!settings.visible);
   });
 
   function applySettings() {
-    panel.hidden = !settings.visible;
-    fab.hidden = settings.visible;
+    panel.hidden = !isShown();
+    fab.hidden = settings.visible || !pageOpen;
     panel.classList.toggle('full', settings.layout === 'full');
+    fitPanel();
     panel.style.setProperty('--fs', `${settings.fontSize}px`);
     $('[data-act="layout"]').innerHTML = settings.layout === 'full' ? ICON_SHRINK : ICON_EXPAND;
     $('[data-act="layout"]').title = settings.layout === 'full' ? 'Back to panel (Esc)' : 'Full screen';
@@ -147,11 +151,47 @@
 
   function setVisible(visible) {
     saveSettings({ visible });
-    if (visible) {
-      if (needsLoad) load();
-      startLoop();
-    }
+    onShownChange();
   }
+
+  function onShownChange() {
+    if (!isShown()) return;
+    if (needsLoad) load();
+    startLoop();
+  }
+
+  function checkPage() {
+    const open = isPlayerPageOpen();
+    if (open !== pageOpen) {
+      pageOpen = open;
+      applySettings();
+      onShownChange();
+    }
+    fitPanel();
+  }
+
+  // In panel layout, sit exactly over the player page's right-hand column
+  // (Up next / Lyrics / Related) so it lines up at any window size or aspect
+  // ratio. Falls back to the stylesheet's fixed sizing if it can't be found.
+  let fitted = '';
+  function fitPanel() {
+    let box = '';
+    const r = isShown() && settings.layout !== 'full' ? sidePanelRect() : null;
+    if (r) {
+      const top = Math.max(r.top, 64);
+      const bottom = Math.min(r.bottom, innerHeight - 76);
+      if (r.width >= 280 && bottom - top >= 240) {
+        box = `${Math.round(top)},${Math.round(r.left)},${Math.round(r.width)},${Math.round(bottom - top)}`;
+      }
+    }
+    if (box === fitted) return;
+    fitted = box;
+    const [top, left, width, height] = box ? box.split(',') : [];
+    Object.assign(panel.style, box
+      ? { top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px`, right: 'auto', bottom: 'auto' }
+      : { top: '', left: '', width: '', height: '', right: '', bottom: '' });
+  }
+  addEventListener('resize', fitPanel);
 
   function nudge(delta) {
     offset = Math.round((offset + delta) * 10) / 10;
@@ -213,7 +253,7 @@
 
   function frame() {
     raf = 0;
-    if (!settings.visible) return;
+    if (!isShown()) return;
     tick(false);
     raf = requestAnimationFrame(frame);
   }
@@ -258,7 +298,7 @@
       offset = 0;
       offsetEl.textContent = '0.0s';
       updateMeta();
-      if (settings.visible) load();
+      if (isShown()) load();
       else needsLoad = true;
     } else if (t.art !== track.art) {
       track.art = t.art;
@@ -348,8 +388,9 @@
     updateMeta();
     showStatus('Play a song to see lyrics.');
     checkTrack();
+    checkPage();
     setInterval(checkTrack, 1000);
-    if (settings.visible) startLoop();
+    setInterval(checkPage, 250);
   });
 
   // ------------------------------------------------------------ assets ----
