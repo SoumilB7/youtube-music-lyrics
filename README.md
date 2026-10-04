@@ -24,6 +24,10 @@ A Chrome extension that shows large, time-synced lyrics on [YouTube Music](https
 - **Lyrics:** comes from [LRCLIB](https://lrclib.net), with YouTube Music's own lyrics as a fallback. Lyrics without timestamps are spread across the song's length.
 - **Transliteration:** works offline using rules. Letters are mapped to Roman, Hindi schwa-deletion rules drop the silent "a" sounds (धड़कन → *dhadkan*), and common words use their usual spellings (नहीं → *nahi*).
 
+## Credits
+
+Lyrics come from [LRCLIB](https://lrclib.net) ([source](https://github.com/tranxuanthang/lrclib)), a free, open-source lyrics database created by Thang Tran and filled by its community. If Lyricly is useful to you, consider contributing lyrics there.
+
 ## Development
 
 ```sh
@@ -31,3 +35,5 @@ node --test tests/
 ```
 
 No build step. Reload the extension in `chrome://extensions` after changes.
+
+`./scripts/package.sh` builds the Chrome Web Store zip. Release steps and listing text are in [store/](store/README.md). Privacy policy: [PRIVACY.md](PRIVACY.md).

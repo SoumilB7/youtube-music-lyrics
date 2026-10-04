@@ -34,6 +34,7 @@ test('special clusters and vowels', () => {
   assert.equal(w('गए'), 'gaye');
   assert.equal(w('विश्वास'), 'vishwaas');
   assert.equal(w('हवा'), 'hawa');
+  assert.equal(w('गाँव'), 'gaanv');
 });
 
 test('common words', () => {
@@ -41,6 +42,8 @@ test('common words', () => {
   assert.equal(w('नहीं'), 'nahi');
   assert.equal(w('क्यों'), 'kyun');
   assert.equal(w('हमसफ़र'), 'humsafar');
+  assert.equal(w('केसरिया'), 'kesariya');
+  assert.equal(transliterateLine('लव-स्टोरियाँ'), 'Love-storiyaan');
 });
 
 test('NFC-decomposed and precomposed nukta letters give the same result', () => {

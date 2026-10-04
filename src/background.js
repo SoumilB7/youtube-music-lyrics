@@ -3,7 +3,9 @@
 // the page's CORS rules.
 
 const LRCLIB = 'https://lrclib.net/api';
-const HEADERS = { 'Lrclib-Client': 'Lyricly/0.1.0 (Chrome extension for YouTube Music)' };
+const HEADERS = {
+  'Lrclib-Client': `Lyricly/${chrome.runtime.getManifest().version} (https://github.com/SoumilB7/youtube-music-lyrics)`,
+};
 const HIT_TTL = 30 * 24 * 3600 * 1000;
 const MISS_TTL = 12 * 3600 * 1000;
 const DEVANAGARI = /[ऀ-ॿ]/;

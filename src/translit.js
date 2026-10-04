@@ -64,7 +64,9 @@
     'वाह': 'waah', 'अब': 'ab', 'और': 'aur', 'पहले': 'pehle', 'कह': 'keh', 'रह': 'reh',
     'जो': 'jo', 'तो': 'toh', 'सब': 'sab', 'हम': 'hum',
     // Compounds where the schwa rule can't see the morpheme boundary.
-    'हमसफ़र': 'humsafar', 'हमदम': 'humdum',
+    'हमसफ़र': 'humsafar', 'हमदम': 'humdum', 'केसरिया': 'kesariya',
+    // English loanwords.
+    'लव': 'love',
   };
 
   const DEVANAGARI_RE = /[ऀ-ॿ]/;
@@ -164,7 +166,8 @@
 
       if (p.type === 'C') {
         let r = p.r;
-        if (p.ch === 'व') r = i === 0 ? 'v' : 'w';
+        // व: "v" at the start or end of a word (vaada, gaanv), "w" between vowels (hawa).
+        if (p.ch === 'व') r = i > 0 && isV(next) ? 'w' : 'v';
         out += r;
         continue;
       }

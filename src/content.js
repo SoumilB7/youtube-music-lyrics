@@ -590,11 +590,22 @@
     setApprox(built.synced
       ? built.approx || ''
       : 'Approximate timing: these lyrics have no timestamps, so lines are spread across the song. Use − / + to line them up.');
-    sourceEl.textContent = [
-      built.source,
-      built.synced ? 'synced' : 'timing estimated',
-      romanised && 'auto-romanised',
-    ].filter(Boolean).join(' · ');
+    // Credit the source; LRCLIB links to its site.
+    sourceEl.textContent = '';
+    if (built.source === 'LRCLIB') {
+      const a = document.createElement('a');
+      a.href = 'https://lrclib.net';
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = 'LRCLIB';
+      a.title = 'Lyrics from LRCLIB, a free, open-source lyrics database';
+      sourceEl.append(a);
+    } else {
+      sourceEl.append(built.source);
+    }
+    for (const part of [built.synced ? 'synced' : 'timing estimated', romanised && 'auto-romanised']) {
+      if (part) sourceEl.append(` · ${part}`);
+    }
     renderLines();
   }
 
@@ -728,6 +739,8 @@ footer {
   font-size: 11px; color: rgba(255,255,255,.5); border-top: 1px solid rgba(255,255,255,.08);
 }
 .panel.full footer { padding: 8px max(16px, 4vw); }
+footer a { color: inherit; text-decoration: none; }
+footer a:hover { color: #fff; text-decoration: underline; }
 .link { background: none; border: 0; padding: 0; color: #fff; text-decoration: underline; cursor: pointer; font-size: 11px; }
 `;
   }
