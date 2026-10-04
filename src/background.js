@@ -23,7 +23,7 @@ chrome.action.onClicked.addListener((tab) => {
 
 async function findLyrics(track) {
   const { title, artist, duration } = track;
-  const key = `lrc:${norm(title)}|${norm(artist)}|${Math.round(duration || 0)}`;
+  const key = `lrc2:${norm(title)}|${norm(artist)}|${Math.round(duration || 0)}`;
 
   const cached = (await chrome.storage.local.get(key))[key];
   if (cached && Date.now() - cached.at < (cached.result.found ? HIT_TTL : MISS_TTL)) {
@@ -92,8 +92,10 @@ function pickBest(candidates, { title, artist, duration }) {
     else if (diff <= 20) score += 10;
     else score -= 80; // probably a different version/edit of the song
     if (nArtist && norm(c.artistName).includes(nArtist)) score += 30;
-    // Prefer lyrics someone already romanised by hand over auto-transliteration.
-    if (!DEVANAGARI.test(c.syncedLyrics || c.plainLyrics)) score += 5;
+    // Prefer original-script lyrics: they romanise consistently here (many
+    // Latin uploads are poor machine output like "kee", "haea") and they make
+    // the Both and original-script modes work.
+    if (DEVANAGARI.test(c.syncedLyrics || c.plainLyrics)) score += 5;
     score -= diff * 0.5;
 
     if (!best || score > best.score) best = { ...c, diff, score };

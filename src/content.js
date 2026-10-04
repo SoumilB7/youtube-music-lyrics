@@ -98,6 +98,13 @@
     scroller.addEventListener(ev, () => (userScrollUntil = Date.now() + 4000), { passive: true });
   }
 
+  // Keep scrolling inside the panel from also scrolling the page behind it.
+  // The lyrics list handles its own edges via overscroll-behavior; the header,
+  // footer and full-screen backdrop shouldn't scroll anything.
+  panel.addEventListener('wheel', (e) => {
+    if (!scroller.contains(e.target)) e.preventDefault();
+  }, { passive: false });
+
   new ResizeObserver(() => {
     scroller.style.setProperty('--half', `${Math.round(scroller.clientHeight / 2)}px`);
     centerActive(false);
@@ -368,10 +375,10 @@ button { font: inherit; color: inherit; }
   width: clamp(320px, 34vw, 540px); display: flex; flex-direction: column;
   border-radius: 16px; overflow: hidden; color: #fff; isolation: isolate;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Noto Sans Devanagari", sans-serif;
-  background: rgba(14,14,14,.94); border: 1px solid rgba(255,255,255,.08);
+  background: #0e0e0e; border: 1px solid rgba(255,255,255,.08); overscroll-behavior: contain;
   box-shadow: 0 24px 64px rgba(0,0,0,.55);
 }
-.panel.full { top: 0; left: 0; right: 0; bottom: 72px; width: auto; border-radius: 0; border: 0; background: rgba(6,6,6,.97); }
+.panel.full { top: 0; left: 0; right: 0; bottom: 72px; width: auto; border-radius: 0; border: 0; background: #060606; }
 @media (max-width: 720px) { .panel:not(.full) { left: 8px; right: 8px; width: auto; } }
 
 .bg {
@@ -408,7 +415,7 @@ header {
 
 .scroller {
   --half: 40%;
-  flex: 1; overflow-y: auto; position: relative; padding: 0 24px;
+  flex: 1; overflow-y: auto; overscroll-behavior: contain; position: relative; padding: 0 24px;
   scrollbar-width: none;
   -webkit-mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent);
           mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent);
