@@ -19,17 +19,18 @@ chrome.runtime.onInstalled?.addListener(() => {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'lyricly:find') {
-    findLyrics(msg.track).then(sendResponse, (err) => sendResponse({ found: false, error: String(err) }));
+    findLyrics(msg.track, !!msg.force).then(sendResponse, (err) => sendResponse({ found: false, error: String(err) }));
     return true; // async response
   }
   return false;
 });
 
-async function findLyrics(track) {
+// `force` (the panel's Retry button) skips the cache.
+async function findLyrics(track, force) {
   const { title, artist, duration } = track;
   const key = `lrc2:${norm(title)}|${norm(artist)}|${Math.round(duration || 0)}`;
 
-  const cached = (await chrome.storage.local.get(key))[key];
+  const cached = !force && (await chrome.storage.local.get(key))[key];
   if (cached && Date.now() - cached.at < (cached.result.found ? HIT_TTL : MISS_TTL)) {
     return cached.result;
   }
@@ -42,12 +43,14 @@ async function findLyrics(track) {
 
   const seen = new Map();
   let best = null;
+  let errors = 0;
   for (const params of queries) {
     let results;
     try {
       results = await search(params);
     } catch (err) {
       console.warn('[Lyricly] LRCLIB search failed', params, err);
+      errors++;
       continue;
     }
     for (const r of results) seen.set(r.id, r);
@@ -67,6 +70,8 @@ async function findLyrics(track) {
       }
     : { found: false };
 
+  // A network failure isn't "no lyrics": don't cache it, so the next open tries again.
+  if (!best && errors) return { found: false, error: 'network' };
   await chrome.storage.local.set({ [key]: { at: Date.now(), result } });
   return result;
 }

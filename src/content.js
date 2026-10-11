@@ -47,6 +47,16 @@
   let lastAttempt = 0;
 
   const isShown = () => settings.visible && pageOpen && onLyricsTab;
+  // Lyrics are only looked up once you show interest in the song: its player
+  // page is open (any side tab) in the browser tab you're looking at. Songs
+  // that play while the player is closed or the tab is in the background are
+  // never fetched.
+  const wantsLyrics = () => settings.visible && pageOpen && document.visibilityState === 'visible';
+
+  // Lyrics already worked out this session, by track (null = none found), so
+  // reopening a song never fetches it again. Only Retry does.
+  const loaded = new Map();
+  const MAX_LOADED = 200;
 
   // ---------------------------------------------------------------- UI ----
 
@@ -118,7 +128,7 @@
       case 'later': return nudge(-0.5);
       case 'layout': return saveSettings({ layout: settings.layout === 'full' ? 'panel' : 'full' });
       case 'close': return setVisible(false);
-      case 'retry': return load(true);
+      case 'retry': return load({ force: true, skipWait: true });
     }
     const line = e.target.closest('.line');
     if (line && lyrics) seekTo(lyrics.lines[Number(line.dataset.i)]);
@@ -211,10 +221,10 @@
   }
 
   function onShownChange() {
-    if (!isShown()) return;
-    if (needsLoad) load();
-    startLoop();
+    if (needsLoad && wantsLyrics()) load();
+    if (isShown()) startLoop();
   }
+  document.addEventListener('visibilitychange', onShownChange);
 
   function checkPage() {
     const open = isPlayerPageOpen();
@@ -222,6 +232,7 @@
       pageOpen = open;
       wantLyrics = open && settings.autoOpenLyrics;
       selectAttempts = 0;
+      onShownChange(); // opening the player is the signal to fetch
     }
 
     let lyricsActive = false;
@@ -545,7 +556,7 @@
       updateTimingUI();
       selectAttempts = 0;
       updateMeta();
-      if (isShown()) load();
+      if (wantsLyrics()) load();
       else needsLoad = true;
     } else if (t.art !== track.art) {
       track.art = t.art;
@@ -553,17 +564,42 @@
     }
   }
 
-  async function load(skipWait) {
+  // YouTube Music's own lyrics, cached on this device like LRCLIB results:
+  // 30 days when found, 12 hours when not. Errors aren't cached.
+  async function cachedYTMLyrics(videoId, force) {
+    const key = `ytm:${videoId}`;
+    if (!force) {
+      const c = (await chrome.storage.local.get(key))[key];
+      if (c && Date.now() - c.at < (c.result ? 30 * 864e5 : 12 * 36e5)) return c.result;
+    }
+    const result = await fetchYTMLyrics(videoId);
+    await chrome.storage.local.set({ [key]: { at: Date.now(), result } });
+    return result;
+  }
+
+  async function load({ force = false, skipWait = false } = {}) {
     const my = ++loadToken;
     needsLoad = false;
     sourceEl.textContent = '';
     retryBtn.hidden = true;
     setApprox('');
-    showStatus('Finding lyrics…');
 
+    // Already worked out this session: show it again without fetching.
+    if (!force && track && loaded.has(track.key)) {
+      await restoreSavedTiming(track);
+      if (my === loadToken) show(loaded.get(track.key));
+      return;
+    }
+
+    showStatus('Finding lyrics…');
     // The duration in the player bar lags the title by a moment on track change.
     if (!skipWait) await sleep(800);
     if (my !== loadToken) return;
+    // You may have closed the player or switched tabs while we waited.
+    if (!wantsLyrics()) {
+      needsLoad = true;
+      return;
+    }
     const t = readTrack() || track;
     if (!t || t.key !== track?.key) return;
     track = t;
@@ -571,11 +607,14 @@
     if (my !== loadToken) return;
 
     let built = null;
+    let failed = false; // a network error, as opposed to "no lyrics exist"
     try {
       const res = await chrome.runtime.sendMessage({
         type: 'lyricly:find',
+        force,
         track: { title: cleanTitle(t.title), artist: t.artist, album: t.album, duration: t.duration },
       });
+      if (res?.error) failed = true;
       if (my !== loadToken) return;
       if (res?.found && res.synced) {
         built = { lines: parseLRC(res.syncedLyrics), synced: true, source: 'LRCLIB' };
@@ -588,6 +627,7 @@
       }
     } catch (err) {
       console.warn('[Lyricly] lookup failed', err);
+      failed = true;
       if (String(err).includes('Extension context invalidated')) {
         showStatus('Lyricly was updated — reload this tab.');
         return;
@@ -597,29 +637,40 @@
     if (!built && t.videoId) {
       showStatus('Checking YouTube Music lyrics…');
       try {
-        const ytm = await fetchYTMLyrics(t.videoId);
+        const ytm = await cachedYTMLyrics(t.videoId, force);
         if (my !== loadToken) return;
         if (ytm) {
           built = { lines: estimateTimings(plainToLines(ytm.text), t.duration), synced: false, source: ytm.source };
         }
       } catch (err) {
         console.warn('[Lyricly] YouTube Music lyrics failed', err);
+        failed = true;
       }
     }
     if (my !== loadToken) return;
 
     if (!built || !built.lines.some((l) => l.text)) {
+      built = null;
+    } else {
+      for (const ln of built.lines) ln.roman = hasDevanagari(ln.text) ? transliterateLine(ln.text) : '';
+    }
+    // Remember the outcome, unless the network failed (then try again next time).
+    if (built || !failed) {
+      loaded.delete(t.key);
+      loaded.set(t.key, built);
+      if (loaded.size > MAX_LOADED) loaded.delete(loaded.keys().next().value);
+    }
+    show(built, failed);
+  }
+
+  function show(built, failed) {
+    if (!built) {
       lyrics = null;
-      showStatus('No lyrics found for this track.');
+      showStatus(failed ? "Couldn't reach the lyrics service." : 'No lyrics found for this track.');
       retryBtn.hidden = false;
       return;
     }
-
-    let romanised = false;
-    for (const ln of built.lines) {
-      ln.roman = hasDevanagari(ln.text) ? transliterateLine(ln.text) : '';
-      if (ln.roman) romanised = true;
-    }
+    const romanised = built.lines.some((l) => l.roman);
     lyrics = built;
     setApprox(built.synced
       ? built.approx || ''
