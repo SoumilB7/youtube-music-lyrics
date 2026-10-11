@@ -3,7 +3,7 @@
   "name": "Lyricly — Synced Lyrics for YouTube Music",
   "short_name": "Lyricly",
   "version": "1.0.0",
-  "description": "Large, time-synced lyrics for YouTube Music, with Hindi lyrics automatically romanised into Hinglish.",
+  "description": "Large, time-synced lyrics for YouTube Music. Hindi, Punjabi, Tamil, Korean and more shown in English letters.",
   "homepage_url": "https://github.com/SoumilB7/youtube-music-lyrics",
   "minimum_chrome_version": "110",
   "icons": {
@@ -29,11 +29,31 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://music.youtube.com/*"],
-      "js": ["src/translit.js", "src/lrc.js", "src/ytm.js", "src/store.js", "src/content.js"],
+      "matches": [
+        "https://music.youtube.com/*"
+      ],
+      "js": [
+        "src/translit.js",
+        "src/scripts/bengali.js",
+        "src/scripts/gujarati.js",
+        "src/scripts/odia.js",
+        "src/scripts/tamil.js",
+        "src/scripts/telugu.js",
+        "src/scripts/kannada.js",
+        "src/scripts/malayalam.js",
+        "src/scripts/korean.js",
+        "src/lrc.js",
+        "src/ytm.js",
+        "src/store.js",
+        "src/content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["storage"],
-  "host_permissions": ["https://lrclib.net/*"]
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://lrclib.net/*"
+  ]
 }

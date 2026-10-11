@@ -8,7 +8,7 @@ Copy these into the **Store listing** tab of the Chrome Web Store developer dash
 Lyricly — Synced Lyrics for YouTube Music
 
 **Summary** (comes from `manifest.json`, 132 characters max)
-Large, time-synced lyrics for YouTube Music, with Hindi lyrics automatically romanised into Hinglish.
+Large, time-synced lyrics for YouTube Music. Hindi, Punjabi, Tamil, Korean and more shown in English letters.
 
 **Category:** Entertainment
 **Language:** English
@@ -16,10 +16,10 @@ Large, time-synced lyrics for YouTube Music, with Hindi lyrics automatically rom
 **Description**
 
 ```
-Lyricly puts large, time-synced lyrics in YouTube Music's Lyrics tab, and makes Hindi songs readable for everyone who doesn't read Devanagari.
+Lyricly puts large, time-synced lyrics in YouTube Music's Lyrics tab, and makes songs in Indian languages and Korean readable for everyone who doesn't read the script.
 
-HINDI IN HINGLISH
-Hindi lyrics are romanised automatically, right in your browser: तू मेरा कोई ना होके भी कुछ लागे becomes "Tu mera koi na hoke bhi kuch laage". It follows how Hinglish is actually written, dropping the silent "a" sounds (धड़कन → dhadkan, not dhadakana). Show Hinglish, the original script, or both.
+READ ANY SONG IN ENGLISH LETTERS
+Lyrics in Hindi, Punjabi, Bengali, Gujarati, Odia, Tamil, Telugu, Kannada, Malayalam and Korean are shown in English letters automatically, right in your browser: तू मेरा कोई ना होके भी कुछ लागे becomes "Tu mera koi na hoke bhi kuch laage", ਕੁੜੀ ਨੂੰ ਨੱਚਣੇ ਦੇ becomes "Kudi nu nachne de", 보고 싶다 becomes "Bogo sipda". Each language follows how people actually write it in English letters. Show English letters, the original script, or both.
 
 SYNCED TO THE SONG
 The current line is highlighted and kept in view as the song plays. Click any line to jump to that part of the song. For songs with no timed lyrics, Lyricly spreads the lines across the song so the highlight stays close, and marks the timing as approximate.

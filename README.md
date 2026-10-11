@@ -1,6 +1,6 @@
 # Lyricly
 
-A Chrome extension that shows large, time-synced lyrics on [YouTube Music](https://music.youtube.com) and converts Hindi (Devanagari) lyrics into romanised Hindi.
+A Chrome extension that shows large, time-synced lyrics on [YouTube Music](https://music.youtube.com) and shows lyrics in other scripts in English letters: Hindi, Punjabi, Bengali, Gujarati, Odia, Tamil, Telugu, Kannada, Malayalam and Korean.
 
 ## Install
 
@@ -10,7 +10,7 @@ A Chrome extension that shows large, time-synced lyrics on [YouTube Music](https
 
 ## Controls
 
-- **Aa / Both / अ:** romanised, both, or original script
+- **Aa / Both / अ:** English letters, both, or the original script (the button shows the song's own script, e.g. ਪ for Punjabi, 한 for Korean)
 - **A− / A+:** text size
 - **− / +:** fix timing by 0.5 s at the current point in the song, or click the number to type an exact value. Fixes at different points stretch the lyrics between them, so lyrics that drift line up throughout. **↺** resets the timing.
 - **Bookmark:** saves the timing fix for this song and applies it automatically next time.
@@ -22,7 +22,7 @@ A Chrome extension that shows large, time-synced lyrics on [YouTube Music](https
 ## How it works
 
 - **Lyrics:** comes from [LRCLIB](https://lrclib.net), with YouTube Music's own lyrics as a fallback. Lyrics without timestamps are spread across the song's length.
-- **Transliteration:** works offline using rules. Letters are mapped to Roman, Hindi schwa-deletion rules drop the silent "a" sounds (धड़कन → *dhadkan*), and common words use their usual spellings (नहीं → *nahi*).
+- **Transliteration:** works offline using rules, one file per language in [src/scripts/](src/scripts/) plus Hindi and Punjabi in [translit.js](src/translit.js). Each follows how that language is usually written in English letters: Hindi drops silent "a" sounds (धड़कन → *dhadkan*), Tamil spells sounds by position (காதல் → *kaadhal*), Bengali uses "o" (মন → *mon*), Korean uses Revised Romanization (사랑해 → *saranghae*). Common words use their usual spellings (नहीं → *nahi*, ਨੂੰ → *nu*).
 
 ## Credits
 

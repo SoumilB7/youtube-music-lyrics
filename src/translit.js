@@ -20,8 +20,8 @@
   const ANUSVARA = 'ं';
   const CHANDRABINDU = 'ँ';
   const VISARGA = 'ः';
-  const ZWJ = '‍';
-  const ZWNJ = '‌';
+  const ZWJ = '\u200D';
+  const ZWNJ = '\u200C';
 
   const CONSONANTS = {
     'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'n',
@@ -39,6 +39,8 @@
   // Consonant + nukta (mostly Urdu/Persian sounds).
   const NUKTA_CONSONANTS = {
     'क': 'q', 'ख': 'kh', 'ग': 'gh', 'ज': 'z', 'ड': 'd', 'ढ': 'dh', 'फ': 'f', 'य': 'y',
+    // These two come from Gurmukhi ਸ਼ and ਲ਼, which are stored as ਸ / ਲ + dot.
+    'स': 'sh', 'ल': 'l',
   };
 
   const VOWELS = {
@@ -54,8 +56,10 @@
 
   const LABIALS = new Set(['p', 'ph', 'b', 'bh', 'm', 'f']);
 
-  // Words people spell by convention rather than by rule. Keys are NFC.
-  const COMMON = {
+  const normalizeKeys = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k.normalize('NFC'), v]));
+
+  // Words people spell by convention rather than by rule.
+  const COMMON = normalizeKeys({
     'है': 'hai', 'हैं': 'hain', 'मैं': 'main', 'में': 'mein', 'में': 'mein',
     'नहीं': 'nahi', 'नही': 'nahi', 'यह': 'yeh', 'वह': 'woh', 'वो': 'wo', 'ये': 'ye',
     'क्यों': 'kyun', 'क्यूँ': 'kyun', 'क्यूं': 'kyun', 'क्यो': 'kyo',
@@ -67,15 +71,84 @@
     'हमसफ़र': 'humsafar', 'हमदम': 'humdum', 'केसरिया': 'kesariya',
     // English loanwords.
     'लव': 'love',
-  };
+  });
 
-  const DEVANAGARI_RE = /[ऀ-ॿ]/;
+  // Devanagari letters and signs; not the danda (। ॥), which Bengali and others share.
+  const DEVANAGARI_RE = /[\u0900-\u0963\u0966-\u097F]/;
   // A "word" is a run of Devanagari letters/signs (not danda or digits).
-  const WORD_RE = /[ऀ-ॣ॰-ॿ‌‍]+/g;
+  // Must start with a letter, so a joiner inside an emoji (👩\u200D❤️\u200D👨) isn't taken as a word.
+  const WORD_RE = /[\u0900-\u0963\u0970-\u097F][\u0900-\u0963\u0970-\u097F\u200C\u200D]*/g;
 
   function hasDevanagari(text) {
     return DEVANAGARI_RE.test(text);
   }
+
+  // ---- Punjabi (Gurmukhi) ----
+  // Gurmukhi's Unicode block mirrors Devanagari's letter for letter
+  // (U+0A15 ਕ ↔ U+0915 क, and so on), so a Gurmukhi word is mapped onto
+  // Devanagari and romanised by the same rules, after a few Punjabi-only signs.
+  const GURMUKHI_RE = /[\u0A00-\u0A7F]/;
+  const GURMUKHI_WORD_RE = /[\u0A01-\u0A65\u0A70-\u0A7F][\u0A01-\u0A65\u0A70-\u0A7F\u200C\u200D]*/g;
+  const TIPPI = '\u0A70'; // nasal sign, like anusvara
+  const ADDAK = '\u0A71'; // doubles the next consonant
+
+  const COMMON_PA = normalizeKeys({
+    'ਨੂੰ': 'nu', 'ਤੂੰ': 'tu', 'ਮੈਨੂੰ': 'mainu', 'ਤੈਨੂੰ': 'tainu', 'ਸਾਨੂੰ': 'saanu',
+    'ਤੁਹਾਨੂੰ': 'tuhanu', 'ਉਹਨੂੰ': 'ohnu', 'ਓਹਨੂੰ': 'ohnu',
+    'ਵੇ': 've', 'ਨੀ': 'ni', 'ਇਹ': 'eh', 'ਉਹ': 'oh', 'ਓਹ': 'oh', 'ਜੀ': 'ji',
+    'ਵਿੱਚ': 'vich', 'ਵਿਚ': 'vich', 'ਕਿਉਂ': 'kyun', 'ਤਾਂ': 'taan', 'ਹਾਏ': 'haaye',
+  });
+
+  function gurmukhiToDevanagari(word) {
+    let out = '';
+    for (const c of word) {
+      // Casual spelling writes a doubled consonant once: ਨੱਚਣਾ → "nachna".
+      if (c === ADDAK) continue;
+      if (c === TIPPI) {
+        out += ANUSVARA;
+        continue;
+      }
+      const cp = c.codePointAt(0);
+      // Other Punjabi-only signs (ੲ ੳ ੴ, ੑ ੵ) have no Devanagari twin and are dropped.
+      if (cp >= 0x0a01 && cp <= 0x0a65) out += String.fromCodePoint(cp - 0x100);
+    }
+    return out;
+  }
+
+  function transliteratePunjabiWord(word) {
+    const key = word.normalize('NFC');
+    return COMMON_PA[key] || transliterateWord(gurmukhiToDevanagari(key));
+  }
+
+  // ---- Script registry ----
+  // Every script Lyricly can romanise registers itself here; Hindi and Punjabi
+  // are built in, the rest live in src/scripts/*.js. A script is
+  //   { code, name, symbol, test: RegExp, words: RegExp (global), word(w) -> roman,
+  //     digits?: '<0-9 in that script>' }
+  // `symbol` is the letter shown on the panel's original-script button.
+  const SCRIPTS = [];
+  function registerScript(def) {
+    if (!SCRIPTS.some((s) => s.code === def.code)) SCRIPTS.push(def);
+  }
+  const scriptFor = (ch) => SCRIPTS.find((s) => s.test.test(ch));
+
+  function isRomanisable(text) {
+    return SCRIPTS.some((s) => s.test.test(text));
+  }
+
+  // Code of the script of the first romanisable letter ('hi', 'pa', ...) or null.
+  function scriptOf(text) {
+    for (const ch of String(text)) {
+      const s = /\p{L}|\p{M}/u.test(ch) && scriptFor(ch);
+      if (s) return s.code;
+    }
+    return null;
+  }
+
+  const scriptInfo = (code) => {
+    const s = SCRIPTS.find((x) => x.code === code);
+    return s ? { code: s.code, name: s.name, symbol: s.symbol } : null;
+  };
 
   function toPhonemes(word) {
     const chars = [...word];
@@ -180,23 +253,28 @@
 
       // Vowel.
       let r = p.r;
+      let glide = '';
+      // A long ee right before another vowel is said short: ਦੀਆਂ -> "diyaan", पीए -> "piye".
+      if (!p.independent && r === 'ee' && isV(next) && next.independent) r = 'i';
       if (p.independent && (isV(prev) || (prev && prev.type === 'N'))) {
         // Vowel after vowel: गए -> "gaye", जाए -> "jaaye", कोई -> "koi".
         if (r === 'e') r = 'ye';
         else if (r === 'ee') r = 'i';
+        // After i/ee a y slips in: ਸਾਰਿਆਂ -> "saariyaan", ਦੀਆਂ -> "deeyaan".
+        else if (isV(prev) && (prev.r === 'i' || prev.r === 'ee') && /^(a|aa|o|oo|u|au)$/.test(r)) glide = 'y';
       }
 
       const nasalFinal = next && next.type === 'N' && i + 2 === n;
       const plainFinal = i + 1 === n;
       if (nasalFinal) {
-        out += NASAL_ENDINGS[r] || r + 'n';
+        out += glide + (NASAL_ENDINGS[r] || r + 'n');
         i++; // the nasal is consumed
         continue;
       }
       if (plainFinal && n > 1) {
         r = PLAIN_ENDINGS[r] || r;
       }
-      out += r;
+      out += glide + r;
     }
 
     return out
@@ -213,25 +291,43 @@
   }
 
   const DIGITS = '०१२३४५६७८९';
+  const DIGITS_PA = '੦੧੨੩੪੫੬੭੮੯';
 
   function transliterateLine(text) {
-    if (!hasDevanagari(text)) return text;
-    let out = text
-      .normalize('NFC')
-      .replace(WORD_RE, transliterateWord)
-      .replace(/[०-९]/g, (d) => String(DIGITS.indexOf(d)))
+    if (!isRomanisable(text)) return text;
+    let out = text.normalize('NFC');
+    for (const s of SCRIPTS) {
+      if (!s.test.test(out)) continue;
+      out = out.replace(s.words, (w) => s.word(w));
+      if (s.digits) out = out.replace(new RegExp(`[${s.digits}]`, 'g'), (d) => String(s.digits.indexOf(d)));
+    }
+    out = out
       .replace(/\s*[।॥]+\s*/g, ' ')
       .replace(/\s{2,}/g, ' ')
       .trim();
     // Capitalise the first letter, like hand-romanised lyrics, when the line
-    // started in Devanagari (leave lines that open in English alone).
-    if (/^[^\p{L}]*[ऀ-ॿ]/u.test(text)) {
+    // started in a romanised script (leave lines that open in English alone).
+    const first = String(text).match(/\p{L}/u);
+    if (first && scriptFor(first[0])) {
       out = out.replace(/^([^a-z]*)([a-z])/, (_, pre, ch) => pre + ch.toUpperCase());
     }
     return out;
   }
 
-  const api = { transliterateLine, transliterateWord, hasDevanagari };
+  registerScript({
+    code: 'hi', name: 'Hindi', symbol: 'अ', test: DEVANAGARI_RE, words: WORD_RE, word: transliterateWord, digits: DIGITS,
+  });
+  registerScript({
+    code: 'pa', name: 'Punjabi', symbol: 'ਪ', test: GURMUKHI_RE, words: GURMUKHI_WORD_RE, word: transliteratePunjabiWord, digits: DIGITS_PA,
+  });
+
+  // Building blocks for scripts laid out like Devanagari (most Indian
+  // scripts): map onto Devanagari, then reuse these. See src/scripts/.
+  const indic = { toPhonemes, deleteSchwas, render, transliterateWord, normalizeKeys };
+
+  const api = {
+    transliterateLine, transliterateWord, hasDevanagari, isRomanisable, scriptOf, scriptInfo, registerScript, indic,
+  };
   root.Lyricly = Object.assign(root.Lyricly || {}, api);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

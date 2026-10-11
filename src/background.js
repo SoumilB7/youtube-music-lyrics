@@ -8,7 +8,8 @@ const HEADERS = {
 };
 const HIT_TTL = 30 * 24 * 3600 * 1000;
 const MISS_TTL = 12 * 3600 * 1000;
-const DEVANAGARI = /[ऀ-ॿ]/;
+// Scripts Lyricly can romanise itself: Indian scripts (Devanagari to Malayalam) and Hangul.
+const ROMANISABLE = /[\u0900-\u0D7F\uAC00-\uD7A3\u1100-\u11FF\u3131-\u318E]/;
 
 // Saved settings and timing fixes are migrated to the current format on
 // install and on every update (see store.js).
@@ -104,7 +105,7 @@ function pickBest(candidates, { title, artist, duration }) {
     // Prefer original-script lyrics: they romanise consistently here (many
     // Latin uploads are poor machine output like "kee", "haea") and they make
     // the Both and original-script modes work.
-    if (DEVANAGARI.test(c.syncedLyrics || c.plainLyrics)) score += 5;
+    if (ROMANISABLE.test(c.syncedLyrics || c.plainLyrics)) score += 5;
     score -= diff * 0.5;
 
     if (!best || score > best.score) best = { ...c, diff, score };

@@ -56,3 +56,31 @@ test('lines keep punctuation and Latin text, capitalise, drop danda', () => {
   assert.equal(transliterateLine('Baby, तू मेरा है।'), 'Baby, tu mera hai');
   assert.equal(transliterateLine('Already romanised'), 'Already romanised');
 });
+
+const { scriptOf, scriptInfo } = require('../src/translit.js');
+
+test('Punjabi (Gurmukhi) romanises like Hinglish', () => {
+  assert.equal(transliterateLine('ਤੂੰ ਸਾਰਿਆਂ ਫ਼ਿਕਰਾਂ ਨੂੰ ਛੱਡ ਕੇ'), 'Tu saariyaan fikraan nu chhad ke');
+  assert.equal(transliterateLine('ਕੁੜੀ ਨੂੰ ਨੱਚਣੇ ਦੇ (oh), ਹਾਂ'), 'Kudi nu nachne de (oh), haan');
+  assert.equal(transliterateLine('ਮੈਨੂੰ ਤੇਰੀ ਯਾਦ ਆਉਂਦੀ ਏ'), 'Mainu teri yaad aaundi e');
+  assert.equal(transliterateLine('ਦਿਲ ਦੀਆਂ ਗੱਲਾਂ'), 'Dil diyaan galaan');
+  assert.equal(transliterateLine('੧੨ ਵਜੇ'), '12 Vaje');
+});
+
+test('Gurmukhi nukta letters work stored either way', () => {
+  // ਸ਼ as one code point vs ਸ + nukta; NFC stores both as the pair.
+  assert.equal(transliterateLine('ਸ਼ੇਰ'), 'Sher');
+  assert.equal(transliterateLine('ਸ਼ੇਰ'), 'Sher');
+  assert.equal(transliterateLine('ਖ਼ਾਨ'), 'Khaan');
+});
+
+test('script detection picks the button symbol', () => {
+  assert.equal(scriptOf('Baby, ਨੱਚਣੇ ਦੇ'), 'pa');
+  assert.equal(scriptOf('तू मेरा'), 'hi');
+  assert.equal(scriptOf('only English'), null);
+  assert.equal(scriptInfo('pa').symbol, 'ਪ');
+});
+
+test('emoji joiners on a Hindi line are left alone', () => {
+  assert.equal(transliterateLine('तू मेरा 👩‍❤️‍👨'), 'Tu mera 👩‍❤️‍👨');
+});

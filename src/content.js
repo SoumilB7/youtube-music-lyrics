@@ -7,7 +7,7 @@
     readTrack, getVideo, isPlayerPageOpen, cleanTitle, fetchYTMLyrics,
     sideTabs, lyricsTab, isTabSelected, unlockLyricsTab, selectLyricsTab, sideContentRect,
     parseLRC, plainToLines, estimateTimings, lineIndexAt, offsetAt, playbackTimeFor, nudgePoints,
-    transliterateLine, hasDevanagari, store,
+    transliterateLine, isRomanisable, scriptOf, scriptInfo, store,
   } = globalThis.Lyricly;
 
   // Show a line slightly before it's sung so you can read along.
@@ -75,12 +75,14 @@
         </div>
         <div class="controls">
           <div class="seg" role="group" aria-label="Script">
-            <button data-mode="roman" title="Romanised (Hinglish)">Aa</button>
+            <button data-mode="roman" title="In English letters">Aa</button>
             <button data-mode="both" title="Romanised + original">Both</button>
             <button data-mode="original" title="Original script">अ</button>
           </div>
-          <button data-act="smaller" title="Smaller text">A−</button>
-          <button data-act="bigger" title="Larger text">A+</button>
+          <div class="seg" role="group" aria-label="Text size">
+            <button data-act="smaller" title="Smaller text">A−</button>
+            <button data-act="bigger" title="Larger text">A+</button>
+          </div>
           <div class="sync" title="Nudge timing if lyrics run early/late">
             <button data-act="later" title="Lyrics are early: delay them 0.5s">−</button>
             <input class="offset" id="lyricly-offset" type="text" inputmode="decimal" value="0.0s"
@@ -89,13 +91,26 @@
             <button data-act="reset" class="reset" title="Reset timing for this song" hidden>${ICON_RESET}</button>
             <button data-act="save" class="save" disabled>${ICON_SAVE}</button>
           </div>
+        </div>
+        <div class="window">
           <button data-act="layout" class="icon" title="Full screen"></button>
           <button data-act="close" class="icon" title="Hide (Alt+L)">${ICON_CLOSE}</button>
         </div>
       </header>
       <div class="scroller"><div class="spacer"></div><div class="lines"></div><div class="spacer"></div></div>
-      <footer><span class="source"></span><button data-act="retry" class="link" hidden>Retry</button></footer>
+      <footer>
+        <span class="source"></span><button data-act="retry" class="link" hidden>Retry</button>
+        <a class="brand" href="https://github.com/SoumilB7/youtube-music-lyrics" target="_blank" rel="noopener" title="Lyricly on GitHub">Lyricly</a>
+      </footer>
     </section>`;
+
+  // Page-level style (outside the shadow root) used while the panel covers YT's
+  // side panel: everything but the tab row is hidden.
+  const coverStyle = document.createElement('style');
+  coverStyle.textContent = `
+    html.lyricly-covering ytmusic-player-page :is(#side-panel, .side-panel) { visibility: hidden !important; }
+    html.lyricly-covering ytmusic-player-page :is(#side-panel, .side-panel) :is(tp-yt-paper-tabs, tp-yt-paper-tab) { visibility: visible !important; }
+  `;
 
   const $ = (sel) => shadow.querySelector(sel);
   const fab = $('.fab');
@@ -273,11 +288,15 @@
     const r = (isShown() || !fab.hidden) && settings.layout !== 'full' ? sideContentRect() : null;
     if (r) {
       const top = Math.max(r.top, 64);
-      const bottom = Math.min(r.bottom, innerHeight - 76);
+      const bar = document.querySelector('ytmusic-player-bar')?.getBoundingClientRect();
+      const bottom = Math.min(r.bottom, (bar && bar.height ? bar.top : innerHeight - 72) - 8);
       if (r.width >= 280 && bottom - top >= 200) {
         box = `${Math.round(top)},${Math.round(r.left)},${Math.round(r.width)},${Math.round(bottom - top)}`;
       }
     }
+    // While docked, hide YT's own tab content underneath so none of it can
+    // peek out around the panel's edges.
+    document.documentElement.classList.toggle('lyricly-covering', !!box && isShown());
     if (box === fitted) return;
     fitted = box;
     const [top, left, width, height] = box ? box.split(',').map(Number) : [];
@@ -652,7 +671,8 @@
     if (!built || !built.lines.some((l) => l.text)) {
       built = null;
     } else {
-      for (const ln of built.lines) ln.roman = hasDevanagari(ln.text) ? transliterateLine(ln.text) : '';
+      for (const ln of built.lines) ln.roman = isRomanisable(ln.text) ? transliterateLine(ln.text) : '';
+      built.script = mainScript(built.lines);
     }
     // Remember the outcome, unless the network failed (then try again next time).
     if (built || !failed) {
@@ -663,14 +683,32 @@
     show(built, failed);
   }
 
+  // The script most lines are written in ('hi', 'pa', ...), for the
+  // original-script button. Mixed songs go with the majority.
+  function mainScript(lines) {
+    const counts = {};
+    for (const l of lines) {
+      const code = l.roman && scriptOf(l.text);
+      if (code) counts[code] = (counts[code] || 0) + 1;
+    }
+    return Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || null;
+  }
+
+  function updateScriptButton(code) {
+    const info = (code && scriptInfo(code)) || scriptInfo('hi');
+    const btn = $('[data-mode="original"]');
+    btn.textContent = info.symbol;
+    btn.title = code ? `Original script (${info.name})` : 'Original script';
+  }
+
   function show(built, failed) {
+    updateScriptButton(built?.script);
     if (!built) {
       lyrics = null;
       showStatus(failed ? "Couldn't reach the lyrics service." : 'No lyrics found for this track.');
       retryBtn.hidden = false;
       return;
     }
-    const romanised = built.lines.some((l) => l.roman);
     lyrics = built;
     setApprox(built.synced
       ? built.approx || ''
@@ -688,9 +726,7 @@
     } else {
       sourceEl.append(built.source);
     }
-    for (const part of [built.synced ? 'synced' : 'timing estimated', romanised && 'auto-romanised']) {
-      if (part) sourceEl.append(` · ${part}`);
-    }
+    sourceEl.append(built.synced ? ' · synced' : ' · timing estimated');
     renderLines();
   }
 
@@ -708,6 +744,7 @@
   chrome.storage.sync.get(DEFAULTS).then((stored) => {
     settings = { ...DEFAULTS, ...stored };
     document.documentElement.append(host);
+    (document.head || document.documentElement).append(coverStyle);
     applySettings();
     updateMeta();
     showStatus('Play a song to see lyrics.');
@@ -755,10 +792,13 @@ button { font: inherit; color: inherit; }
 .panel.full .bg { opacity: .5; }
 
 header {
-  display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap;
-  padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "meta window" "controls controls"; gap: 10px 8px; align-items: center;
+  padding: 12px 14px 10px; border-bottom: 1px solid rgba(255,255,255,.08);
 }
-.meta { flex: 1 1 140px; min-width: 0; }
+.panel.full header { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "meta controls window"; gap: 12px; }
+.meta { grid-area: meta; min-width: 0; }
+.window { grid-area: window; display: flex; gap: 4px; align-self: start; }
 .meta .row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .meta .t, .meta .a { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .approx {
@@ -771,16 +811,17 @@ header {
 .panel.full .meta .t { font-size: 18px; }
 .panel.full .meta .a { font-size: 14px; }
 
-.controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.controls button {
+.controls { grid-area: controls; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.controls button, .window button {
   min-width: 30px; height: 30px; padding: 0 8px; border-radius: 8px; border: 0;
   background: rgba(255,255,255,.08); font-size: 13px; font-weight: 600; cursor: pointer;
   display: inline-grid; place-items: center;
 }
-.controls button:hover { background: rgba(255,255,255,.16); }
-.controls button.icon { padding: 0; width: 30px; }
+.controls button:hover, .window button:hover { background: rgba(255,255,255,.16); }
+.window button.icon { padding: 0; width: 30px; }
 .seg, .sync { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: rgba(255,255,255,.05); align-items: center; }
 .seg button, .sync button { height: 26px; background: transparent; }
+.seg button:hover, .sync button:hover { background: rgba(255,255,255,.1); }
 .seg button.on { background: #fff; color: #000; }
 .sync button.save:disabled { opacity: .35; cursor: default; }
 .sync button.save.dirty { background: rgba(255,59,92,.22); }
@@ -831,6 +872,7 @@ footer {
 }
 .panel.full footer { padding: 8px max(16px, 4vw); }
 footer a { color: inherit; text-decoration: none; }
+footer .brand { margin-left: auto; font-weight: 600; letter-spacing: .01em; }
 footer a:hover { color: #fff; text-decoration: underline; }
 .link { background: none; border: 0; padding: 0; color: #fff; text-decoration: underline; cursor: pointer; font-size: 11px; }
 `;
