@@ -22,6 +22,8 @@ All of this is stored in your browser:
 
 Settings and saved timing fixes use Chrome's sync storage. If Chrome Sync is turned on, Chrome syncs them across your devices through your Google account. The lyrics cache and the backup copies stay on this device.
 
+**Copy that survives reinstalling.** Removing an extension deletes everything it stored, so Lyricly also keeps a copy of your settings and saved timing fixes in YouTube Music's own site storage in your browser (music.youtube.com). If you remove Lyricly and install it again, it restores from that copy. The copy stays in your browser and is never sent anywhere. Clearing YouTube Music's site data in your browser settings deletes it.
+
 **Backup files.** If you choose **Export backup** on the Saved timings page, Lyricly saves a file with your settings and saved fixes to your computer. The file goes nowhere else unless you move it yourself.
 
 ## What Lyricly doesn't do
@@ -30,7 +32,7 @@ Lyricly doesn't sell or share your data, doesn't track what you browse, and does
 
 ## Removing your data
 
-Uninstalling Lyricly deletes everything it stored. To clear saved timing fixes without uninstalling, use **Forget** on the Saved timings page, or press the bookmark on a song with a saved fix.
+Uninstalling Lyricly deletes what it stored in its own storage. The copy in YouTube Music's site storage stays until you clear that site's data (Chrome settings → Privacy and security → Site settings → music.youtube.com → Delete data). To clear saved timing fixes without uninstalling, use **Forget** on the Saved timings page, or press the bookmark on a song with a saved fix.
 
 ## Contact
 

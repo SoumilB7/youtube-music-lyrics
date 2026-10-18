@@ -17,7 +17,7 @@ A Chrome extension that shows large, time-synced lyrics on [YouTube Music](https
 - **⤢:** full screen (<kbd>Esc</kbd> to exit)
 - **Click a line:** seek to it
 - **<kbd>Alt</kbd>+<kbd>L</kbd>:** show or hide the lyrics
-- **Toolbar icon:** settings (auto-open Lyrics tab, show Lyricly lyrics) and **Saved timings**, where you can back up, restore or forget saved fixes. Saves are kept through every update.
+- **Toolbar icon:** settings (auto-open Lyrics tab, show Lyricly lyrics) and **Saved timings**, where you can back up, restore or forget saved fixes. Saves are kept through every update, and even through removing and reinstalling Lyricly (a copy lives in YouTube Music's site storage).
 
 ## How it works
 

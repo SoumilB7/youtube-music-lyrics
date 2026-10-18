@@ -190,6 +190,8 @@
 
   // Settings changed from the toolbar popup (or another tab).
   chrome.storage.onChanged.addListener((changes, area) => {
+    // Keep the backup copy in step with every save, forget and setting change.
+    if (Object.keys(changes).some((k) => k.startsWith(store.TIMING_PREFIX) || k in DEFAULTS)) mirrorToPage();
     if (area !== 'sync') return;
     let changed = false;
     for (const [k, { newValue }] of Object.entries(changes)) {
@@ -336,6 +338,43 @@
     points = next;
     updateTimingUI();
     tick(true);
+  }
+
+  // ---- Backup copy in YouTube Music's own site storage ----
+  // Removing an extension deletes everything it stored. So a copy of saved
+  // timings and settings is kept in music.youtube.com's localStorage, which
+  // belongs to the site rather than to Lyricly, and a fresh install of
+  // Lyricly restores from it.
+  const PAGE_BACKUP_KEY = 'lyricly:backup';
+  let mirrorTimer = 0;
+  function mirrorToPage() {
+    clearTimeout(mirrorTimer);
+    mirrorTimer = setTimeout(async () => {
+      try {
+        localStorage.setItem(PAGE_BACKUP_KEY, JSON.stringify(await store.exportData()));
+      } catch (err) {
+        console.warn('[Lyricly] could not update the backup copy', err);
+      }
+    }, 300);
+  }
+
+  async function restoreFromPageOnFreshInstall() {
+    try {
+      // This flag lives in Lyricly's own storage, so it's missing exactly
+      // when Lyricly was just installed (or reinstalled).
+      const { pageBackupChecked } = await chrome.storage.local.get('pageBackupChecked');
+      if (!pageBackupChecked) {
+        const raw = localStorage.getItem(PAGE_BACKUP_KEY);
+        if (raw) {
+          const n = await store.importData(JSON.parse(raw));
+          if (n) console.info(`[Lyricly] restored ${n} saved timing${n === 1 ? '' : 's'} from the backup copy`);
+        }
+        await chrome.storage.local.set({ pageBackupChecked: true });
+      }
+    } catch (err) {
+      console.warn('[Lyricly] could not restore the backup copy', err);
+    }
+    mirrorToPage();
   }
 
   // ---- Per-song saved timing ----
@@ -788,7 +827,7 @@
 
   // -------------------------------------------------------------- boot ----
 
-  chrome.storage.sync.get(DEFAULTS).then((stored) => {
+  restoreFromPageOnFreshInstall().then(() => chrome.storage.sync.get(DEFAULTS)).then((stored) => {
     settings = { ...DEFAULTS, ...stored };
     document.documentElement.append(host);
     (document.head || document.documentElement).append(coverStyle);
