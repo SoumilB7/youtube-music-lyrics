@@ -46,7 +46,10 @@
   let selectAttempts = 0;
   let lastAttempt = 0;
 
-  const isShown = () => settings.visible && pageOpen && onLyricsTab;
+  // YouTube Music's own full screen (browser full screen) shows only the
+  // artwork: Lyricly stays out of the way there.
+  const inYTFullscreen = () => !!document.fullscreenElement;
+  const isShown = () => settings.visible && pageOpen && onLyricsTab && !inYTFullscreen();
   // Lyrics are only looked up once you show interest in the song: its player
   // page is open (any side tab) in the browser tab you're looking at. Songs
   // that play while the player is closed or the tab is in the background are
@@ -212,7 +215,7 @@
 
   function applySettings() {
     panel.hidden = !isShown();
-    fab.hidden = settings.visible || !pageOpen || !onLyricsTab;
+    fab.hidden = settings.visible || !pageOpen || !onLyricsTab || inYTFullscreen();
     panel.classList.toggle('full', settings.layout === 'full');
     fitPanel();
     panel.style.setProperty('--fs', `${settings.fontSize}px`);
@@ -239,7 +242,19 @@
     if (needsLoad && wantsLyrics()) load();
     if (isShown()) startLoop();
   }
-  document.addEventListener('visibilitychange', onShownChange);
+  // Back on the tab: catch up on any song change first (timers are throttled
+  // in background tabs), then fetch if needed.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      checkTrack();
+      checkPage();
+    }
+    onShownChange();
+  });
+  document.addEventListener('fullscreenchange', () => {
+    applySettings();
+    onShownChange();
+  });
 
   function checkPage() {
     const open = isPlayerPageOpen();
@@ -533,6 +548,8 @@
 
   function tick(force) {
     if (!lyrics?.lines.length) return;
+    // Never drive one song's lyrics with another song's playback time.
+    if (lyrics.key !== track?.key) return;
     const v = getVideo();
     if (!v) return;
     const now = v.currentTime;
@@ -570,6 +587,10 @@
     if (t.key !== track?.key) {
       track = t;
       lyrics = null;
+      loadToken++; // cancel any lookup still running for the previous song
+      showStatus(''); // drop the old song's lines right away
+      sourceEl.textContent = '';
+      setApprox('');
       points = [];
       savedPoints = null;
       updateTimingUI();
@@ -612,7 +633,7 @@
 
     showStatus('Finding lyrics…');
     // The duration in the player bar lags the title by a moment on track change.
-    if (!skipWait) await sleep(800);
+    if (!skipWait) await waitForSettledTrack();
     if (my !== loadToken) return;
     // You may have closed the player or switched tabs while we waited.
     if (!wantsLyrics()) {
@@ -671,6 +692,7 @@
     if (!built || !built.lines.some((l) => l.text)) {
       built = null;
     } else {
+      built.key = t.key; // which song these lyrics belong to
       for (const ln of built.lines) ln.roman = isRomanisable(ln.text) ? transliterateLine(ln.text) : '';
       built.script = mainScript(built.lines);
     }
@@ -739,6 +761,31 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  // On a song change YT updates the title, artist and length at slightly
+  // different moments. Wait until two reads in a row agree (at most ~2s).
+  async function waitForSettledTrack() {
+    let last = '';
+    for (let i = 0; i < 10; i++) {
+      await sleep(200);
+      const t = readTrack();
+      const sig = t ? `${t.key}|${Math.round(t.duration)}` : '';
+      if (sig && sig === last && t.duration > 0) return;
+      last = sig;
+    }
+  }
+
+  // Catch song changes as they happen: a DOM observer isn't throttled in
+  // background tabs the way timers are.
+  let watchedBar = null;
+  const barObserver = new MutationObserver(() => checkTrack());
+  function watchPlayerBar() {
+    const bar = document.querySelector('ytmusic-player-bar');
+    if (!bar || bar === watchedBar) return;
+    watchedBar = bar;
+    barObserver.disconnect();
+    barObserver.observe(bar, { subtree: true, childList: true, characterData: true });
+  }
+
   // -------------------------------------------------------------- boot ----
 
   chrome.storage.sync.get(DEFAULTS).then((stored) => {
@@ -750,7 +797,11 @@
     showStatus('Play a song to see lyrics.');
     checkTrack();
     checkPage();
-    setInterval(checkTrack, 1000);
+    watchPlayerBar();
+    setInterval(() => {
+      watchPlayerBar();
+      checkTrack();
+    }, 1000);
     setInterval(checkPage, 250);
   });
 
